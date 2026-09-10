@@ -2,12 +2,15 @@ import * as THREE from 'three';
 import { damp, lerp } from '../utils/math';
 import type { Car } from '../car/car';
 
-export type CameraMode = 'chase' | 'hood';
+export type CameraMode = 'chase' | 'hood' | 'cockpit';
 
 const BASE_FOV = 62;
 const SPEED_FOV = 16;
 
-/** 弹簧臂追逐相机 + 引擎盖视角，FOV 随速度拉远，氮气时冲击视角 + 震动 */
+/** 驾驶位（车局部坐标：左驾） */
+const COCKPIT_OFFSET = { side: -0.42, up: 1.06, back: -0.35 };
+
+/** 弹簧臂追逐 / 引擎盖 / 驾驶舱三视角，FOV 随速度拉远，氮气冲击 + 震动 */
 export class ChaseCamera {
   mode: CameraMode = 'chase';
   private fov = BASE_FOV;
@@ -15,7 +18,7 @@ export class ChaseCamera {
   private shake = 0;
 
   toggle(): void {
-    this.mode = this.mode === 'chase' ? 'hood' : 'chase';
+    this.mode = this.mode === 'chase' ? 'hood' : this.mode === 'hood' ? 'cockpit' : 'chase';
   }
 
   /** 下一帧把相机直接放到目标位（比赛开始时避免弹簧甩动） */
@@ -29,7 +32,26 @@ export class ChaseCamera {
     const fz = Math.cos(st.heading);
     const speedK = car.speedKmh / 220;
 
-    if (this.mode === 'chase') {
+    if (this.mode === 'cockpit') {
+      // 刚体跟随驾驶位（无弹簧臂），随车身俯仰/侧倾
+      const rx = -Math.cos(st.heading);
+      const rz = Math.sin(st.heading);
+      camera.position.set(
+        car.pos.x + rx * COCKPIT_OFFSET.side + fx * COCKPIT_OFFSET.back,
+        car.pos.y + COCKPIT_OFFSET.up,
+        car.pos.z + rz * COCKPIT_OFFSET.side + fz * COCKPIT_OFFSET.back,
+      );
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = st.heading + Math.PI;
+      camera.rotation.x = car.group.rotation.x * 0.9 - car.visPitch * 0.006;
+      camera.rotation.z = -car.visRoll * 0.008;
+      // 高速轻微震动
+      if (car.speedKmh > 110) {
+        camera.rotation.x += (Math.random() - 0.5) * 0.0035;
+        camera.rotation.z += (Math.random() - 0.5) * 0.0025;
+      }
+      this.initialized = false;
+    } else if (this.mode === 'chase') {
       const dist = 7.6 + speedK * 2.4;
       const height = 3.1 + speedK * 0.6;
       const target = new THREE.Vector3(
@@ -54,8 +76,8 @@ export class ChaseCamera {
       this.initialized = false;
     }
 
-    const targetFov =
-      (this.mode === 'hood' ? BASE_FOV + 8 : BASE_FOV) + speedK * SPEED_FOV + (nitro ? 9 : 0);
+    const baseFov = this.mode === 'cockpit' ? BASE_FOV + 6 : this.mode === 'hood' ? BASE_FOV + 8 : BASE_FOV;
+    const targetFov = baseFov + speedK * SPEED_FOV + (nitro ? 9 : 0);
     this.fov = lerp(this.fov, targetFov, damp(nitro ? 9 : 4, dt));
     if (Math.abs(camera.fov - this.fov) > 0.05) {
       camera.fov = this.fov;

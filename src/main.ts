@@ -4,6 +4,7 @@ import { TRACK_DEFS, type TrackId } from './track/trackData';
 import { buildCurbs, buildGantry, buildGuardrails, buildRoad } from './track/trackMesh';
 import { createSky, createTerrain, createVegetation } from './track/environment';
 import { Car } from './car/car';
+import { Cockpit } from './car/cockpit';
 import { makeTuning, NITRO_LAP_BONUS } from './car/carPhysics';
 import { AIDriver } from './ai/aiDriver';
 import { Input } from './race/input';
@@ -144,6 +145,10 @@ window.addEventListener('keydown', unlockAudio);
 
 const player = new Car('P1', save.appearance, makeTuning(save.upgrades), save.livery);
 const player2 = new Car('P2', randomAppearance(), makeTuning({ engine: 1, tires: 1, nitro: 1 }), randomLivery());
+const cockpitP1 = new Cockpit();
+const cockpitP2 = new Cockpit();
+player.installCockpit(cockpitP1);
+player2.installCockpit(cockpitP2);
 const aiCars = [0, 1, 2].map(
   (i) =>
     new Car(
@@ -402,6 +407,8 @@ let resultsShown = false;
 let newRecord = false;
 let bustedRace = false;
 let gearbox = initGearbox();
+let gearboxP2 = initGearbox();
+let lastRpm = 0.18;
 let prevCountdown: string | null = null;
 let prevRaceState = race.state;
 let thudCooldown = 0;
@@ -454,6 +461,7 @@ function startRace(nextMode: GameMode, twoPlayer: boolean): void {
   newRecord = false;
   bustedRace = false;
   gearbox = initGearbox();
+  gearboxP2 = initGearbox();
   prevCountdown = null;
   prevNitroActive = false;
   bannerTimer = 0;
@@ -745,6 +753,7 @@ function updateAudio(dt: number, state: typeof race.state): void {
   const speedRatio = Math.abs(player.state.forwardSpeed) / player.tuning.maxSpeed;
   const gb = stepGearbox(gearbox, speedRatio, dt);
   gearbox = gb.state;
+  lastRpm = gb.rpm;
   if (gb.upshifted && racing) audio.playSfx('shift');
 
   audio.setEngine(gb.rpm, racing ? player.input.throttle : 0, {
@@ -1035,6 +1044,22 @@ function animate(): void {
   } else {
     chaseCam.update(dt, player, camera, state === 'racing' && player.state.nitroActive);
     hud.update(hudDataFor(0, state));
+  }
+
+  // 驾驶舱内饰与仪表（仅驾驶舱视角可见；仪表转速复用档位模型）
+  cockpitP1.setVisible(chaseCam.mode === 'cockpit');
+  cockpitP1.update(dt, player.state.steer, player.speedKmh, lastRpm, player.nitroRatio, player.input.brake > 0);
+  if (splitMode) {
+    const gb2 = stepGearbox(
+      gearboxP2,
+      Math.abs(player2.state.forwardSpeed) / player2.tuning.maxSpeed,
+      dt,
+    );
+    gearboxP2 = gb2.state;
+    cockpitP2.setVisible(chaseCamP2.mode === 'cockpit');
+    cockpitP2.update(dt, player2.state.steer, player2.speedKmh, gb2.rpm, player2.nitroRatio, player2.input.brake > 0);
+  } else {
+    cockpitP2.setVisible(false);
   }
 
   // HEAT 警示：警车接近时屏幕红边脉冲

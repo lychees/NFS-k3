@@ -13,6 +13,7 @@ import { clamp, damp, lerp } from '../utils/math';
 import { headingFromTangent, type Track } from '../track/track';
 import type { AppearanceConfig, LiveryConfig } from '../garage/save';
 import { NitroFlame } from '../fx/nitroFlame';
+import type { Cockpit } from './cockpit';
 
 export class Car {
   readonly name: string;
@@ -43,6 +44,7 @@ export class Car {
   private wheelSpin = 0;
   private visLong = 0;
   private visLat = 0;
+  private cockpit: Cockpit | null = null;
 
   constructor(name: string, appearance: AppearanceConfig, tuning: TuningParams, livery: LiveryConfig) {
     this.name = name;
@@ -77,6 +79,22 @@ export class Car {
 
   get wheelSpinAngle(): number {
     return this.wheelSpin;
+  }
+
+  /** 车身视觉俯仰/侧倾（驾驶舱相机用） */
+  get visPitch(): number {
+    return this.visLong;
+  }
+
+  get visRoll(): number {
+    return this.visLat;
+  }
+
+  /** 安装驾驶舱内饰（挂在车辆容器下，姿态随车身同步） */
+  installCockpit(cockpit: Cockpit): void {
+    this.cockpit = cockpit;
+    cockpit.setVisible(false);
+    this.group.add(cockpit.group);
   }
 
   /** 回放姿态：纯视觉写入（位置/朝向/车轮/尾灯/尾焰），不触碰物理模拟 */
@@ -199,6 +217,9 @@ export class Car {
     this.visLat = lerp(this.visLat, clamp(st.latAccel, -30, 30), k);
     this.model.body.rotation.x = -this.visLong * 0.011;
     this.model.body.rotation.z = -this.visLat * 0.014;
+    if (this.cockpit) {
+      this.cockpit.group.rotation.copy(this.model.body.rotation);
+    }
 
     // 刹车时尾灯提亮
     this.model.brakeMaterial.emissiveIntensity = this.input.brake > 0 ? 4.5 : 0.9;
