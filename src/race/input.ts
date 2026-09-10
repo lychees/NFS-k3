@@ -4,7 +4,7 @@ const GAME_CODES = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyC', 'Escape', 'Enter',
   'ShiftLeft', 'ShiftRight', 'KeyN', 'KeyG', 'KeyM', 'Digit1', 'Digit2', 'Digit3', 'Digit4',
-  'Digit5', 'Slash', 'Period', 'ControlRight',
+  'Digit5', 'Slash', 'Period', 'ControlRight', 'Tab', 'KeyR',
 ]);
 
 /** 键盘状态采集 + 按键事件分发 */
@@ -34,6 +34,11 @@ export class Input {
 
   private down(...codes: string[]): boolean {
     return codes.some((c) => this.keys.has(c));
+  }
+
+  /** 按住状态查询（回放快退/快进用） */
+  isDown(...codes: string[]): boolean {
+    return this.down(...codes);
   }
 
   /** 单人模式键位（保持不变） */

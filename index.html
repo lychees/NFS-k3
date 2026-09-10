@@ -25,6 +25,13 @@
       <div id="hud-muted" class="hidden">MUTED · M 取消静音</div>
     </div>
 
+    <div id="replay-hud" class="hidden">
+      <div id="replay-title">REPLAY · <span id="replay-follow">P1</span><span id="replay-speed">1×</span></div>
+      <div id="replay-bar"><div id="replay-fill"></div></div>
+      <div id="replay-time">0:00.0 / 0:00.0</div>
+      <div id="replay-controls">SPACE 暂停 · ← → 快退快进 · 1/2/3 变速 · TAB 切换车辆 · ESC 退出</div>
+    </div>
+
     <div id="screen-menu" class="screen">
       <div class="menu-inner">
         <div class="menu-subtitle">ARCADE CHAMPIONSHIP</div>
@@ -77,6 +84,7 @@
           <tbody id="results-body"></tbody>
         </table>
         <div id="results-credits" class="results-credits"></div>
+        <div class="menu-item hidden" id="results-replay">观看回放 WATCH REPLAY (R)</div>
         <div class="menu-start blink">ENTER 再来一局 · ESC 菜单</div>
       </div>
     </div>

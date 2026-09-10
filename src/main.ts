@@ -10,6 +10,8 @@ import { Input } from './race/input';
 import { RaceManager, parkingInput } from './race/raceManager';
 import { PursuitManager } from './race/pursuit';
 import { ChaseCamera } from './race/chaseCamera';
+import { Recorder, type ReplayData, type ReplayEntry } from './replay/recorder';
+import { ReplayPlayer } from './replay/replayPlayer';
 import { Hud, type HudData } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { Screens } from './ui/screens';
@@ -187,6 +189,52 @@ const chaseCam = new ChaseCamera();
 const chaseCamP2 = new ChaseCamera();
 const pursuit = new PursuitManager(scene);
 const heatOverlay = document.getElementById('heat-overlay')!;
+
+// ---------- 回放 ----------
+
+const recorder = new Recorder();
+const chaseCamReplay = new ChaseCamera();
+const replayHud = document.getElementById('replay-hud')!;
+const replayFollow = document.getElementById('replay-follow')!;
+const replaySpeed = document.getElementById('replay-speed')!;
+const replayFill = document.getElementById('replay-fill')!;
+const replayTime = document.getElementById('replay-time')!;
+
+let replayData: ReplayData | null = null;
+let replayPlayer: ReplayPlayer | null = null;
+let replaying = false;
+/** 回放对应的车辆（与录制顺序一致） */
+let replayCars: Car[] = [];
+let lastResults: {
+  earned: number | null;
+  opts: Parameters<typeof screens.showResults>[4];
+} | null = null;
+
+function startReplay(): void {
+  if (!replayData || replaying) return;
+  replaying = true;
+  screens.hideResults();
+  hud.hide();
+  hudGlobal.classList.add('hidden');
+  replayHud.classList.remove('hidden');
+  // 回放静音（物理/引擎声全部停用，只留 UI 音）
+  audio.setEngine(0.18, 0, { active: false, shifting: false, nitro: false });
+  audio.setSkid(0);
+  audio.setGrass(0);
+  audio.setSiren(0);
+  replayPlayer = new ReplayPlayer(replayData, replayCars, camera, chaseCamReplay);
+  audio.playSfx('uiConfirm');
+}
+
+function exitReplay(): void {
+  if (!replaying) return;
+  replaying = false;
+  replayPlayer = null;
+  replayHud.classList.add('hidden');
+  if (lastResults) {
+    screens.showResults(race.stats, 0, lastResults.earned, save.credits, lastResults.opts);
+  }
+}
 
 function setGlobalHudMuted(m: boolean): void {
   hudMuted.classList.toggle('hidden', !m);
@@ -384,6 +432,24 @@ function startRace(nextMode: GameMode, twoPlayer: boolean): void {
   if (twoPlayer && !splitMode) enterSplit();
   if (!twoPlayer && splitMode) exitSplit();
 
+  // 录制（双人不录制，仅保留最近一场）
+  if (!twoPlayer) {
+    replayCars = [
+      ...field.map((f) => f.car),
+      ...(mode === 'hotpursuit' ? pursuit.cars : []),
+    ];
+    const entries: ReplayEntry[] = replayCars.map((car, i) => ({
+      car,
+      name: car.name,
+      color: car.color,
+      parked: () => race.stats[i]?.parked ?? false,
+    }));
+    recorder.begin(entries);
+    replayData = null;
+  } else {
+    replayData = null;
+  }
+
   resultsShown = false;
   newRecord = false;
   bustedRace = false;
@@ -410,6 +476,7 @@ function startRace(nextMode: GameMode, twoPlayer: boolean): void {
 }
 
 function toMenu(): void {
+  if (replaying) exitReplay();
   race.toMenu();
   pursuit.setVisible(false);
   if (splitMode) exitSplit();
@@ -471,9 +538,10 @@ screens.onMenuGarage(() => {
   audio.playSfx('uiConfirm');
   openGarage();
 });
+screens.onReplay(() => startReplay());
 
 input.onPress('Enter', () => {
-  if (inGarage) return;
+  if (inGarage || replaying) return;
   if (screens.in2PSub) return;
   if (race.state === 'menu') startRace(save.lastMode, false);
   else if (race.state === 'finished') startRace(mode, splitMode);
@@ -481,6 +549,18 @@ input.onPress('Enter', () => {
     race.resume();
     audio.resumeGame();
   }
+});
+
+input.onPress('KeyR', () => {
+  if (race.state === 'finished' && !replaying && replayData) startReplay();
+});
+
+input.onPress('Space', () => {
+  if (replaying) replayPlayer?.togglePause();
+});
+
+input.onPress('Tab', () => {
+  if (replaying) replayPlayer?.cycleFollow();
 });
 
 input.onPress('KeyG', () => {
@@ -498,6 +578,10 @@ input.onPress('KeyM', () => {
 });
 
 input.onPress('Escape', () => {
+  if (replaying) {
+    exitReplay();
+    return;
+  }
   if (inGarage) {
     audio.playSfx('uiSelect');
     closeGarage();
@@ -521,24 +605,40 @@ input.onPress('Escape', () => {
 });
 
 input.onPress('KeyC', () => {
+  if (replaying) {
+    replayPlayer?.cycleFollow();
+    return;
+  }
   if (race.state !== 'racing') return;
   chaseCam.toggle();
   if (splitMode) chaseCamP2.toggle(); // 双人同时切视角（简单方案）
 });
 
 input.onPress('Digit1', () => {
+  if (replaying) {
+    replayPlayer?.setSpeed(0.5);
+    return;
+  }
   if (race.state === 'menu' && !inGarage) {
     if (screens.in2PSub) startRace('circuit', true);
     else startRace('circuit', false);
   }
 });
 input.onPress('Digit2', () => {
+  if (replaying) {
+    replayPlayer?.setSpeed(1);
+    return;
+  }
   if (race.state === 'menu' && !inGarage) {
     if (screens.in2PSub) startRace('sprint', true);
     else startRace('sprint', false);
   }
 });
 input.onPress('Digit3', () => {
+  if (replaying) {
+    replayPlayer?.setSpeed(2);
+    return;
+  }
   if (race.state === 'menu' && !inGarage && !screens.in2PSub) startRace('knockout', false);
 });
 input.onPress('Digit4', () => {
@@ -718,6 +818,29 @@ function animate(): void {
     return;
   }
 
+  // 回放模式：录制数据驱动车模，物理/AI/音频全停
+  if (replaying && replayPlayer) {
+    if (input.isDown('ArrowLeft')) replayPlayer.seekBy(-8 * dt);
+    if (input.isDown('ArrowRight')) replayPlayer.seekBy(8 * dt);
+    replayPlayer.update(dt);
+
+    const t = replayPlayer.currentTime;
+    const dur = replayPlayer.duration;
+    const fmt = (s: number): string =>
+      `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}.${Math.floor((s * 10) % 10)}`;
+    replayFill.style.width = `${dur > 0 ? (t / dur) * 100 : 0}%`;
+    replayTime.textContent = `${fmt(t)} / ${fmt(dur)}`;
+    replayFollow.textContent = replayPlayer.followName;
+    replaySpeed.textContent = `${replayPlayer.speed}×${replayPlayer.playing ? '' : ' ⏸'}`;
+
+    const fc = replayCars[replayPlayer.followIdx] ?? player;
+    sun.position.set(fc.pos.x + sunDir.x * 220, fc.pos.y + sunDir.y * 220, fc.pos.z + sunDir.z * 220);
+    sun.target.position.copy(fc.pos);
+    sun.target.updateMatrixWorld();
+    postfx.render(scene, camera);
+    return;
+  }
+
   const state = race.state;
   const track = bundle.track;
 
@@ -840,6 +963,9 @@ function animate(): void {
 
       // 氮气开启瞬间的喷射嘶声
       if (player.state.nitroActive && !prevNitroActive) audio.playSfx('nitro');
+
+      // 录制本帧（10Hz 内部节流）
+      if (!splitMode) recorder.frame(race.raceTime);
     } else if (!resultsShown) {
       // 结算：积分（单人）/ 纪录（单人非淘汰赛/非追逐）/ 音效
       resultsShown = true;
@@ -861,14 +987,23 @@ function animate(): void {
         }
         persistSave(save);
       }
-      screens.showResults(race.stats, 0, earned, save.credits, {
-        mode,
-        newRecord,
-        busted: bustedRace,
-        twoPlayer: splitMode,
-        p1Pos: race.stats[0]?.position,
-        p2Pos: race.stats[1]?.position,
-      });
+      if (!splitMode) {
+        recorder.frame(race.raceTime); // 冲线瞬间的尾帧
+        replayData = recorder.stop();
+      }
+      lastResults = {
+        earned,
+        opts: {
+          mode,
+          newRecord,
+          busted: bustedRace,
+          twoPlayer: splitMode,
+          p1Pos: race.stats[0]?.position,
+          p2Pos: race.stats[1]?.position,
+        },
+      };
+      screens.showResults(race.stats, 0, earned, save.credits, lastResults.opts);
+      screens.setReplayAvailable(replayData !== null);
       audio.playSfx(bustedRace ? 'eliminate' : 'victory');
     }
 

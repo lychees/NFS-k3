@@ -75,6 +75,42 @@ export class Car {
       : 0;
   }
 
+  get wheelSpinAngle(): number {
+    return this.wheelSpin;
+  }
+
+  /** 回放姿态：纯视觉写入（位置/朝向/车轮/尾灯/尾焰），不触碰物理模拟 */
+  applyReplayPose(p: {
+    x: number;
+    y: number;
+    z: number;
+    rotX: number;
+    heading: number;
+    steer: number;
+    spin: number;
+    nitro: boolean;
+    brake: boolean;
+  }): void {
+    this.group.position.set(p.x, p.y, p.z);
+    this.group.rotation.y = p.heading;
+    this.group.rotation.x = p.rotX;
+    this.model.wheelFL.rotation.y = p.steer;
+    this.model.wheelFR.rotation.y = p.steer;
+    this.model.spinFL.rotation.x = p.spin;
+    this.model.spinFR.rotation.x = p.spin;
+    this.model.spinRL.rotation.x = p.spin;
+    this.model.spinRR.rotation.x = p.spin;
+    this.model.brakeMaterial.emissiveIntensity = p.brake ? 4.5 : 0.9;
+    for (const f of this.flames) {
+      f.setActive(p.nitro);
+      if (p.nitro) f.update();
+    }
+    this.state.x = p.x;
+    this.state.z = p.z;
+    this.state.heading = p.heading;
+    this.state.steer = p.steer;
+  }
+
   /** 更换外观/涂装（车库实时预览 / 改装后立即生效），物理状态不受影响 */
   rebuildVisual(appearance: AppearanceConfig, livery: LiveryConfig): void {
     this.appearance = appearance;

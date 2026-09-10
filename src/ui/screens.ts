@@ -76,6 +76,15 @@ export class Screens {
     el('menu-garage').addEventListener('click', cb);
   }
 
+  onReplay(cb: () => void): void {
+    el('results-replay').addEventListener('click', cb);
+  }
+
+  /** 结算界面是否显示回放按钮（双人/无录像时隐藏） */
+  setReplayAvailable(available: boolean): void {
+    el('results-replay').classList.toggle('hidden', !available);
+  }
+
   /** 菜单模式项上的最佳成绩标签 */
   updateRecords(records: { circuit: number | null; sprint: number | null }): void {
     el('record-circuit').textContent = records.circuit
