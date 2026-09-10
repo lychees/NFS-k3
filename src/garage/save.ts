@@ -43,7 +43,7 @@ export interface SaveData {
   /** 主音量 0..1 */
   volume: number;
   /** 上次游玩的赛道模式 */
-  lastMode: 'circuit' | 'sprint' | 'knockout';
+  lastMode: 'circuit' | 'sprint' | 'knockout' | 'hotpursuit';
   /** 各赛道最佳总用时（秒） */
   records: { circuit: number | null; sprint: number | null };
 }
@@ -159,7 +159,10 @@ export function loadSave(): SaveData {
           ? Math.min(1, Math.max(0, data.volume))
           : 0.8,
       lastMode:
-        data.lastMode === 'sprint' || data.lastMode === 'circuit' || data.lastMode === 'knockout'
+        data.lastMode === 'sprint' ||
+        data.lastMode === 'circuit' ||
+        data.lastMode === 'knockout' ||
+        data.lastMode === 'hotpursuit'
           ? data.lastMode
           : 'circuit',
       records: {

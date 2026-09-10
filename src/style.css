@@ -667,3 +667,28 @@ body {
     opacity: 1;
   }
 }
+
+/* ---------- HOT PURSUIT HEAT 警示 ---------- */
+
+#heat-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s;
+  z-index: 4;
+}
+
+#heat-overlay.hot {
+  animation: heat-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes heat-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 90px rgba(255, 30, 30, 0.35);
+  }
+  50% {
+    box-shadow: inset 0 0 160px rgba(255, 30, 30, 0.65);
+  }
+}

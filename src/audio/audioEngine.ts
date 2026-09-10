@@ -24,6 +24,10 @@ interface EngineNodes {
   gain: GainNode;
 }
 
+interface SirenNodes {
+  gain: GainNode;
+}
+
 /**
  * AudioEngine 单例：AudioContext 生命周期 + 主增益 + 静音。
  * 持续声（引擎/胎响/草地）为常驻节点图，每帧只更新参数；
@@ -35,6 +39,7 @@ class AudioEngine {
   private engine: EngineNodes | null = null;
   private skid: NoiseVoice | null = null;
   private grass: NoiseVoice | null = null;
+  private siren: SirenNodes | null = null;
   private noiseBuffer: AudioBuffer | null = null;
 
   private muted = false;
@@ -118,6 +123,12 @@ class AudioEngine {
     const t = this.ctx.currentTime;
     this.grass.gain.gain.setTargetAtTime(intensity * 0.22, t, 0.08);
     this.grass.filter.frequency.setTargetAtTime(380 + intensity * 160, t, 0.1);
+  }
+
+  /** 警笛音量 0..1（随最近警车距离衰减） */
+  setSiren(level: number): void {
+    if (!this.ctx || !this.siren) return;
+    this.siren.gain.gain.setTargetAtTime(level * 0.12, this.ctx.currentTime, 0.15);
   }
 
   playSfx(name: SfxName, intensity = 1): void {
@@ -238,6 +249,29 @@ class AudioEngine {
 
     this.skid = this.makeNoiseVoice('bandpass', 800, 1.2);
     this.grass = this.makeNoiseVoice('lowpass', 420, 0.8);
+
+    // 警笛：方波载波 + 低频方波 LFO 扫频（双音交替 wail），常驻节点
+    const sirenOsc = ctx.createOscillator();
+    sirenOsc.type = 'square';
+    sirenOsc.frequency.value = 800;
+    const lfo = ctx.createOscillator();
+    lfo.type = 'square';
+    lfo.frequency.value = 0.55;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 150;
+    lfo.connect(lfoGain);
+    lfoGain.connect(sirenOsc.frequency);
+    const sirenLp = ctx.createBiquadFilter();
+    sirenLp.type = 'lowpass';
+    sirenLp.frequency.value = 2400;
+    const sirenGain = ctx.createGain();
+    sirenGain.gain.value = 0;
+    sirenOsc.connect(sirenLp);
+    sirenLp.connect(sirenGain);
+    sirenGain.connect(this.master);
+    sirenOsc.start();
+    lfo.start();
+    this.siren = { gain: sirenGain };
   }
 
   private makeNoiseVoice(type: BiquadFilterType, freq: number, q: number): NoiseVoice {

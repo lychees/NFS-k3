@@ -156,6 +156,14 @@ export class RaceManager {
     this.state = 'menu';
   }
 
+  /** 外部事件强制结束比赛（HOT PURSUIT 逮捕） */
+  forceFinish(): void {
+    if (this.state !== 'racing') return;
+    this.player.finished = true;
+    this.player.finishTime = this.raceTime;
+    this.state = 'finished';
+  }
+
   /** countdown / racing 状态下每帧调用 */
   update(dt: number, track: Track): void {
     if (this.state === 'countdown') {

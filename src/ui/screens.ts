@@ -10,8 +10,10 @@ function el<T extends HTMLElement>(id: string): T {
 const cssColor = (hex: number): string => `#${hex.toString(16).padStart(6, '0')}`;
 
 export interface ResultsOptions {
-  mode: 'circuit' | 'sprint' | 'knockout';
+  mode: 'circuit' | 'sprint' | 'knockout' | 'hotpursuit';
   newRecord: boolean;
+  /** HOT PURSUIT：被逮捕 */
+  busted?: boolean;
 }
 
 /** 全屏界面：开始菜单（模式选择）/ 暂停 / 结算 */
@@ -34,6 +36,10 @@ export class Screens {
 
   onMenuKnockout(cb: () => void): void {
     el('menu-knockout').addEventListener('click', cb);
+  }
+
+  onMenuHotPursuit(cb: () => void): void {
+    el('menu-hotpursuit').addEventListener('click', cb);
   }
 
   onMenuGarage(cb: () => void): void {
@@ -79,16 +85,20 @@ export class Screens {
         ? playerPos === 1
           ? 'VICTORY!'
           : `ELIMINATED — 第 ${playerPos} 名`
-        : playerPos === 1
-          ? 'VICTORY!'
-          : `FINISH — P${playerPos}`;
+        : opts.mode === 'hotpursuit'
+          ? opts.busted
+            ? 'BUSTED'
+            : `ESCAPED — ${playerPos === 1 ? '1st!' : `P${playerPos}`}`
+          : playerPos === 1
+            ? 'VICTORY!'
+            : `FINISH — P${playerPos}`;
     this.resultsHeadline.textContent = headline + (opts.newRecord ? ' · 新纪录!' : '');
 
-    // 冲刺不显示圈速列；淘汰赛显示状态列
+    // 冲刺/追逐不显示圈速列；淘汰赛显示状态列
     this.resultsHeadRow.innerHTML =
       opts.mode === 'knockout'
         ? '<th>#</th><th>车手</th><th>状态</th>'
-        : opts.mode === 'sprint'
+        : opts.mode === 'sprint' || opts.mode === 'hotpursuit'
           ? '<th>#</th><th>车手</th><th>总时间</th>'
           : '<th>#</th><th>车手</th><th>总时间</th><th>最佳圈</th>';
 
