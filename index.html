@@ -12,30 +12,16 @@
     <canvas id="speedlines"></canvas>
     <div id="heat-overlay"></div>
 
-    <div id="hud" class="hidden">
-      <div id="hud-top-left">
-        <div id="hud-position">4<span class="pos-total">/4</span></div>
-        <div id="hud-lap">LAP 1/3</div>
-      </div>
+    <!-- 单人 HUD（内容由 Hud 模板注入） -->
+    <div id="hud" class="hud-root hidden"></div>
+    <!-- 双人上下半屏 HUD -->
+    <div id="hud-p1" class="hud-root split split-top hidden"></div>
+    <div id="hud-p2" class="hud-root split split-bottom hidden"></div>
+    <!-- 全局 HUD 元素：小地图 + 静音指示 -->
+    <div id="hud-global" class="hidden">
       <div id="hud-top-right">
         <canvas id="minimap" width="180" height="180"></canvas>
       </div>
-      <div id="hud-bottom-left">
-        <div class="time-row"><span class="time-label" id="label-current">本圈</span><span id="time-current">0:00.00</span></div>
-        <div class="time-row"><span class="time-label" id="label-last">上圈</span><span id="time-last">--:--.--</span></div>
-        <div class="time-row best"><span class="time-label" id="label-best">最佳</span><span id="time-best">--:--.--</span></div>
-      </div>
-      <div id="hud-bottom-right">
-        <div id="hud-nitro">
-          <div id="nitro-label">NITRO</div>
-          <div id="nitro-bar"><div id="nitro-fill"></div></div>
-        </div>
-        <div id="hud-speed">0</div>
-        <div id="hud-speed-unit">km/h</div>
-      </div>
-      <div id="hud-center" class="hidden"></div>
-      <div id="hud-banner" class="hidden"></div>
-      <div id="hud-message" class="hidden">⚠ 逆向行驶</div>
       <div id="hud-muted" class="hidden">MUTED · M 取消静音</div>
     </div>
 
@@ -43,15 +29,21 @@
       <div class="menu-inner">
         <div class="menu-subtitle">ARCADE CHAMPIONSHIP</div>
         <h1 class="menu-title">RETRO RUSH<span class="menu-year">'95</span></h1>
-        <div class="menu-tagline">3 圈环道 · 点对点山路 · 车库改装</div>
-        <div class="menu-actions">
+        <div class="menu-tagline">环道 · 冲刺 · 淘汰 · 追逐 · 双人</div>
+        <div class="menu-actions" id="menu-actions-main">
           <div class="menu-item" id="menu-race">环形赛道 CIRCUIT<span class="menu-record" id="record-circuit"></span></div>
           <div class="menu-item" id="menu-sprint">点对点 SPRINT<span class="menu-record" id="record-sprint"></span></div>
           <div class="menu-item" id="menu-knockout">淘汰赛 KNOCKOUT</div>
           <div class="menu-item" id="menu-hotpursuit">警察追逐 HOT PURSUIT</div>
+          <div class="menu-item" id="menu-2p">双人 2 PLAYERS</div>
           <div class="menu-item" id="menu-garage">车 库 GARAGE</div>
         </div>
-        <div class="menu-hint blink">1 环道 · 2 冲刺 · 3 淘汰 · 4 追逐 · G 车库 · ENTER 开始</div>
+        <div class="menu-actions hidden" id="menu-2p-sub">
+          <div class="menu-item" id="menu-2p-circuit">双人 · 环道 CIRCUIT</div>
+          <div class="menu-item" id="menu-2p-sprint">双人 · 冲刺 SPRINT</div>
+          <div class="menu-item" id="menu-2p-back">返 回</div>
+        </div>
+        <div class="menu-hint blink">1-4 单人 · 5 双人 · G 车库 · ENTER 开始</div>
         <div class="menu-keys">
           <div><b>W / ↑</b> 油门</div>
           <div><b>S / ↓</b> 刹车 / 倒车</div>
@@ -60,8 +52,9 @@
           <div><b>SHIFT / N</b> 氮气加速</div>
           <div><b>C</b> 切换视角</div>
           <div><b>M</b> 静音</div>
-          <div><b>ESC</b> 暂停 / 返回</div>
           <div><b>ENTER</b> 确认</div>
+          <div><b>P1</b> WASD · Space · LShift</div>
+          <div><b>P2</b> 方向键 · RShift / · RCtrl .</div>
         </div>
       </div>
     </div>
@@ -84,7 +77,7 @@
           <tbody id="results-body"></tbody>
         </table>
         <div id="results-credits" class="results-credits"></div>
-        <div class="menu-start blink">ENTER 再来一局</div>
+        <div class="menu-start blink">ENTER 再来一局 · ESC 菜单</div>
       </div>
     </div>
 

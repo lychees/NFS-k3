@@ -4,6 +4,7 @@ const GAME_CODES = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyC', 'Escape', 'Enter',
   'ShiftLeft', 'ShiftRight', 'KeyN', 'KeyG', 'KeyM', 'Digit1', 'Digit2', 'Digit3', 'Digit4',
+  'Digit5', 'Slash', 'Period', 'ControlRight',
 ]);
 
 /** 键盘状态采集 + 按键事件分发 */
@@ -35,6 +36,7 @@ export class Input {
     return codes.some((c) => this.keys.has(c));
   }
 
+  /** 单人模式键位（保持不变） */
   getCarInput(): CarInput {
     const throttle = this.down('KeyW', 'ArrowUp') ? 1 : 0;
     const brake = this.down('KeyS', 'ArrowDown') ? 1 : 0;
@@ -42,6 +44,26 @@ export class Input {
       (this.down('KeyD', 'ArrowRight') ? 1 : 0) - (this.down('KeyA', 'ArrowLeft') ? 1 : 0);
     const handbrake = this.down('Space');
     const nitro = this.down('ShiftLeft', 'ShiftRight', 'KeyN');
+    return { throttle, brake, steer, handbrake, nitro };
+  }
+
+  /** 双人 P1：WASD + Space 手刹 + Left Shift 氮气 */
+  getCarInputP1(): CarInput {
+    const throttle = this.down('KeyW') ? 1 : 0;
+    const brake = this.down('KeyS') ? 1 : 0;
+    const steer = (this.down('KeyD') ? 1 : 0) - (this.down('KeyA') ? 1 : 0);
+    const handbrake = this.down('Space');
+    const nitro = this.down('ShiftLeft');
+    return { throttle, brake, steer, handbrake, nitro };
+  }
+
+  /** 双人 P2：方向键 + Right Shift（或 /）手刹 + Right Ctrl（或 .）氮气 */
+  getCarInputP2(): CarInput {
+    const throttle = this.down('ArrowUp') ? 1 : 0;
+    const brake = this.down('ArrowDown') ? 1 : 0;
+    const steer = (this.down('ArrowRight') ? 1 : 0) - (this.down('ArrowLeft') ? 1 : 0);
+    const handbrake = this.down('ShiftRight', 'Slash');
+    const nitro = this.down('ControlRight', 'Period');
     return { throttle, brake, steer, handbrake, nitro };
   }
 }

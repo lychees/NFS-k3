@@ -27,7 +27,7 @@ body {
 
 /* ---------- HUD ---------- */
 
-#hud {
+.hud-root {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -36,24 +36,24 @@ body {
   font-style: italic;
 }
 
-#hud-top-left {
+.hud-top-left {
   position: absolute;
   top: 18px;
   left: 22px;
 }
 
-#hud-position {
+.hud-position {
   font-size: 56px;
   line-height: 1;
   transform: skewX(-8deg);
 }
 
-#hud-position .pos-total {
+.hud-position .pos-total {
   font-size: 26px;
   color: #fff;
 }
 
-#hud-lap {
+.hud-lap {
   margin-top: 6px;
   font-size: 20px;
   color: #fff;
@@ -74,7 +74,7 @@ body {
   border-radius: 6px;
 }
 
-#hud-bottom-left {
+.hud-bottom-left {
   position: absolute;
   left: 22px;
   bottom: 20px;
@@ -101,26 +101,26 @@ body {
   color: #7df97d;
 }
 
-#hud-bottom-right {
+.hud-bottom-right {
   position: absolute;
   right: 26px;
   bottom: 16px;
   text-align: right;
 }
 
-#hud-speed {
+.hud-speed {
   font-size: 72px;
   line-height: 0.95;
   transform: skewX(-8deg);
 }
 
-#hud-speed-unit {
+.hud-speed-unit {
   font-size: 16px;
   color: #ff4b3e;
   letter-spacing: 4px;
 }
 
-#hud-center {
+.hud-center {
   position: absolute;
   top: 26%;
   width: 100%;
@@ -130,12 +130,12 @@ body {
   color: #ffd320;
 }
 
-#hud-center.go {
+.hud-center.go {
   color: #58ff5a;
   font-size: 120px;
 }
 
-#hud-message {
+.hud-message {
   position: absolute;
   top: 16%;
   width: 100%;
@@ -311,7 +311,7 @@ body {
 
 /* ---------- 氮气条 ---------- */
 
-#hud-nitro {
+.hud-nitro {
   margin-bottom: 8px;
   display: flex;
   align-items: center;
@@ -319,14 +319,14 @@ body {
   justify-content: flex-end;
 }
 
-#nitro-label {
+.nitro-label {
   font-size: 13px;
   color: #18e0ff;
   letter-spacing: 3px;
   text-shadow: 0 0 8px rgba(24, 224, 255, 0.8), 2px 2px 0 #000;
 }
 
-#nitro-bar {
+.nitro-bar {
   width: 170px;
   height: 12px;
   border: 2px solid #18e0ff;
@@ -336,7 +336,7 @@ body {
   overflow: hidden;
 }
 
-#nitro-fill {
+.nitro-fill {
   height: 100%;
   width: 100%;
   background: linear-gradient(90deg, #0e7fd8, #18e0ff 60%, #b8f4ff);
@@ -344,7 +344,7 @@ body {
   transition: width 0.1s linear;
 }
 
-#nitro-fill.low {
+.nitro-fill.low {
   background: linear-gradient(90deg, #d83a0e, #ff7a1a);
   box-shadow: 0 0 12px rgba(255, 122, 26, 0.9);
 }
@@ -641,7 +641,7 @@ body {
 
 /* ---------- 淘汰/决赛圈横幅 ---------- */
 
-#hud-banner {
+.hud-banner {
   position: absolute;
   top: 42%;
   width: 100%;
@@ -653,7 +653,7 @@ body {
   letter-spacing: 4px;
 }
 
-#hud-banner.pop {
+.hud-banner.pop {
   animation: banner-pop 0.35s ease-out;
 }
 
@@ -691,4 +691,70 @@ body {
   50% {
     box-shadow: inset 0 0 160px rgba(255, 30, 30, 0.65);
   }
+}
+
+/* ---------- 分屏布局 ---------- */
+
+#hud-global {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.hud-root.split {
+  pointer-events: none;
+}
+
+.hud-root.split-top {
+  bottom: 50%;
+}
+
+.hud-root.split-bottom {
+  top: 50%;
+}
+
+.hud-root.split .hud-position {
+  font-size: 38px;
+}
+
+.hud-root.split .hud-speed {
+  font-size: 50px;
+}
+
+.hud-root.split .hud-center {
+  top: 22%;
+  font-size: 84px;
+}
+
+.hud-root.split .hud-banner {
+  font-size: 40px;
+}
+
+.hud-root.split .hud-bottom-left {
+  font-size: 14px;
+}
+
+.hud-root.split #hud-nitro,
+.hud-root.split .hud-nitro {
+  transform: scale(0.85);
+  transform-origin: right bottom;
+}
+
+.hud-grace {
+  margin-top: 4px;
+  font-size: 16px;
+  color: #58ff5a;
+  letter-spacing: 1px;
+}
+
+#hud-top-right.split-view {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
+}
+
+#menu-2p-sub .menu-item {
+  font-size: 24px;
 }

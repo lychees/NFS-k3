@@ -1,10 +1,28 @@
 import { formatRaceTime } from '../utils/math';
 
-function el<T extends HTMLElement>(id: string): T {
-  const e = document.getElementById(id);
-  if (!e) throw new Error(`#${id} not found`);
-  return e as T;
-}
+const TEMPLATE = `
+  <div class="hud-top-left">
+    <div class="hud-position">4<span class="pos-total">/4</span></div>
+    <div class="hud-lap">LAP 1/3</div>
+    <div class="hud-grace hidden"></div>
+  </div>
+  <div class="hud-bottom-left">
+    <div class="time-row"><span class="time-label label-current">本圈</span><span class="time-current">0:00.00</span></div>
+    <div class="time-row"><span class="time-label label-last">上圈</span><span class="time-last">--:--.--</span></div>
+    <div class="time-row best"><span class="time-label label-best">最佳</span><span class="time-best">--:--.--</span></div>
+  </div>
+  <div class="hud-bottom-right">
+    <div class="hud-nitro">
+      <div class="nitro-label">NITRO</div>
+      <div class="nitro-bar"><div class="nitro-fill"></div></div>
+    </div>
+    <div class="hud-speed">0</div>
+    <div class="hud-speed-unit">km/h</div>
+  </div>
+  <div class="hud-center hidden"></div>
+  <div class="hud-banner hidden"></div>
+  <div class="hud-message hidden">⚠ 逆向行驶</div>
+`;
 
 export interface HudData {
   mode: 'circuit' | 'sprint' | 'knockout';
@@ -33,23 +51,23 @@ export interface HudData {
   nitroRatio: number;
 }
 
-/** DOM 覆盖层 HUD：速度、圈数/进度、名次、圈速/用时、氮气、倒计时 */
+/** DOM 覆盖层 HUD（可实例化多份：单人全屏 / 双人上下半屏各一份） */
 export class Hud {
-  private root = el('hud');
-  private position = el('hud-position');
-  private lap = el('hud-lap');
-  private speed = el('hud-speed');
-  private labelCurrent = el('label-current');
-  private labelLast = el('label-last');
-  private labelBest = el('label-best');
-  private timeCurrent = el('time-current');
-  private timeLast = el('time-last');
-  private timeBest = el('time-best');
-  private center = el('hud-center');
-  private banner = el('hud-banner');
-  private message = el('hud-message');
-  private nitroFill = el('nitro-fill');
-  private muted = el('hud-muted');
+  private container: HTMLElement;
+  private position: HTMLElement;
+  private lap: HTMLElement;
+  private grace: HTMLElement;
+  private speed: HTMLElement;
+  private labelCurrent: HTMLElement;
+  private labelLast: HTMLElement;
+  private labelBest: HTMLElement;
+  private timeCurrent: HTMLElement;
+  private timeLast: HTMLElement;
+  private timeBest: HTMLElement;
+  private center: HTMLElement;
+  private banner: HTMLElement;
+  private message: HTMLElement;
+  private nitroFill: HTMLElement;
 
   private lastSpeed = -1;
   private lastPos = '';
@@ -58,16 +76,42 @@ export class Hud {
   private lastNitro = -1;
   private lastMode = '';
 
+  constructor(container: HTMLElement) {
+    this.container = container;
+    container.innerHTML = TEMPLATE;
+    const q = (cls: string): HTMLElement => {
+      const e = container.querySelector<HTMLElement>(`.${cls}`);
+      if (!e) throw new Error(`.${cls} not found in hud template`);
+      return e;
+    };
+    this.position = q('hud-position');
+    this.lap = q('hud-lap');
+    this.grace = q('hud-grace');
+    this.speed = q('hud-speed');
+    this.labelCurrent = q('label-current');
+    this.labelLast = q('label-last');
+    this.labelBest = q('label-best');
+    this.timeCurrent = q('time-current');
+    this.timeLast = q('time-last');
+    this.timeBest = q('time-best');
+    this.center = q('hud-center');
+    this.banner = q('hud-banner');
+    this.message = q('hud-message');
+    this.nitroFill = q('nitro-fill');
+  }
+
   show(): void {
-    this.root.classList.remove('hidden');
+    this.container.classList.remove('hidden');
   }
 
   hide(): void {
-    this.root.classList.add('hidden');
+    this.container.classList.add('hidden');
   }
 
-  setMuted(m: boolean): void {
-    this.muted.classList.toggle('hidden', !m);
+  /** 双人宽限提示（"等待 P2 完赛： 28s"），null 隐藏 */
+  setGrace(text: string | null): void {
+    this.grace.classList.toggle('hidden', text === null);
+    if (text !== null) this.grace.textContent = text;
   }
 
   /** 大字事件横幅（淘汰 / 决赛圈），由主循环控制展示时长 */

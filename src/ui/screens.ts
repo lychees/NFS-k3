@@ -14,6 +14,10 @@ export interface ResultsOptions {
   newRecord: boolean;
   /** HOT PURSUIT：被逮捕 */
   busted?: boolean;
+  /** 双人：P1/P2 最终名次（触发对比标题） */
+  twoPlayer?: boolean;
+  p1Pos?: number;
+  p2Pos?: number;
 }
 
 /** 全屏界面：开始菜单（模式选择）/ 暂停 / 结算 */
@@ -40,6 +44,32 @@ export class Screens {
 
   onMenuHotPursuit(cb: () => void): void {
     el('menu-hotpursuit').addEventListener('click', cb);
+  }
+
+  onMenu2P(cb: () => void): void {
+    el('menu-2p').addEventListener('click', cb);
+  }
+
+  /** 双人子菜单（赛道选择）显隐；返回 true 表示当前处于子菜单 */
+  show2PSub(show: boolean): void {
+    el('menu-actions-main').classList.toggle('hidden', show);
+    el('menu-2p-sub').classList.toggle('hidden', !show);
+  }
+
+  get in2PSub(): boolean {
+    return !el('menu-2p-sub').classList.contains('hidden');
+  }
+
+  onMenu2PCircuit(cb: () => void): void {
+    el('menu-2p-circuit').addEventListener('click', cb);
+  }
+
+  onMenu2PSprint(cb: () => void): void {
+    el('menu-2p-sprint').addEventListener('click', cb);
+  }
+
+  onMenu2PBack(cb: () => void): void {
+    el('menu-2p-back').addEventListener('click', cb);
   }
 
   onMenuGarage(cb: () => void): void {
@@ -80,8 +110,10 @@ export class Screens {
     const ranked = [...stats].sort((a, b) => a.position - b.position);
     const leaderProgress = ranked[0].progress;
     const playerPos = stats[playerIndex].position;
-    const headline =
-      opts.mode === 'knockout'
+    const ord = (p: number): string => `${p}${['st', 'nd', 'rd', 'th'][Math.min(p, 4) - 1]}`;
+    const headline = opts.twoPlayer
+      ? `P1 ${ord(opts.p1Pos ?? 1)} — P2 ${ord(opts.p2Pos ?? 1)}`
+      : opts.mode === 'knockout'
         ? playerPos === 1
           ? 'VICTORY!'
           : `ELIMINATED — 第 ${playerPos} 名`
@@ -105,7 +137,8 @@ export class Screens {
     this.resultsBody.innerHTML = '';
     ranked.forEach((s) => {
       const tr = document.createElement('tr');
-      const isPlayer = stats.indexOf(s) === playerIndex;
+      const statIdx = stats.indexOf(s);
+      const isPlayer = opts.twoPlayer ? statIdx <= 1 : statIdx === playerIndex;
       if (isPlayer) tr.classList.add('player-row');
 
       let thirdCol: string;
@@ -129,8 +162,11 @@ export class Screens {
       this.resultsBody.appendChild(tr);
     });
 
-    this.resultsCredits.textContent =
-      earnedCredits !== null ? `奖励 +${earnedCredits} CR · 余额 ${creditBalance} CR` : '';
+    this.resultsCredits.textContent = opts.twoPlayer
+      ? '友谊赛 · 不计积分'
+      : earnedCredits !== null
+        ? `奖励 +${earnedCredits} CR · 余额 ${creditBalance} CR`
+        : '';
     this.results.classList.remove('hidden');
   }
 

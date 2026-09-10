@@ -77,8 +77,13 @@ export class RaceManager {
     this.playerIndex = playerIndex;
   }
 
+  /** 人类玩家在 stats 中的下标（双人时为 [0, 1]） */
+  humanIdx: number[] = [0];
+  /** 双人宽限：一方完赛后另一方剩余秒数，null = 未触发 */
+  graceLeft: number | null = null;
+
   get player(): RacerStats {
-    return this.stats[this.playerIndex];
+    return this.stats[this.humanIdx[0] ?? this.playerIndex];
   }
 
   get carsLeft(): number {
@@ -99,7 +104,10 @@ export class RaceManager {
     return this.state === 'racing' && this.raceTime < 0.9;
   }
 
-  startRace(track: Track, opts?: { knockout?: boolean }): void {
+  startRace(
+    track: Track,
+    opts?: { knockout?: boolean; participants?: Car[]; humans?: number[] },
+  ): void {
     const def = track.def;
     this.def = def;
     this.sprint = !def.closed;
@@ -107,18 +115,25 @@ export class RaceManager {
     this.finishDist = track.length - def.startOffset;
     this.elimTimer = ELIM_INTERVAL;
     this.elimEvents = [];
+    this.graceLeft = null;
+    const field = opts?.participants ?? this.cars;
+    this.humanIdx = opts?.humans ?? [this.playerIndex];
     const slots = this.sprint ? SPRINT_GRID_SLOTS : GRID_SLOTS;
 
-    // 玩家排最后一位发车，经典街机设定
-    const order = this.cars.map((_, i) => i).sort((a, b) =>
-      a === this.playerIndex ? 1 : b === this.playerIndex ? -1 : a - b,
-    );
+    // 人类玩家排最后发车，经典街机设定
+    const order = field
+      .map((_, i) => i)
+      .sort((a, b) => {
+        const ah = this.humanIdx.includes(a) ? 1 : 0;
+        const bh = this.humanIdx.includes(b) ? 1 : 0;
+        return ah - bh || a - b;
+      });
     order.forEach((carIdx, slot) => {
       const g = slots[slot];
-      this.cars[carIdx].reset(track, g.dist, g.lat);
+      field[carIdx].reset(track, g.dist, g.lat);
     });
 
-    this.stats = this.cars.map((car, i) => ({
+    this.stats = field.map((car, i) => ({
       car,
       progress: slots[order.indexOf(i)].dist - def.startOffset,
       lastT: car.trackT,
@@ -240,7 +255,19 @@ export class RaceManager {
       }
     }
 
-    if (this.player.finished) this.state = 'finished';
+    // 比赛结束：单人冲线即止；双人等双方都完赛，或一方完赛后 30s 宽限
+    if (this.humanIdx.length > 1) {
+      const humans = this.humanIdx.map((i) => this.stats[i]);
+      if (humans.every((s) => s.finished)) {
+        this.state = 'finished';
+      } else if (humans.some((s) => s.finished)) {
+        if (this.graceLeft === null) this.graceLeft = 30;
+        this.graceLeft -= dt;
+        if (this.graceLeft <= 0) this.state = 'finished';
+      }
+    } else if (this.player.finished) {
+      this.state = 'finished';
+    }
   }
 
   /** 淘汰当前里程最低的未淘汰者；玩家被淘汰或成为最后幸存者时结束比赛 */
