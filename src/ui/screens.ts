@@ -9,12 +9,18 @@ function el<T extends HTMLElement>(id: string): T {
 
 const cssColor = (hex: number): string => `#${hex.toString(16).padStart(6, '0')}`;
 
-/** 全屏界面：开始菜单 / 暂停 / 结算 */
+export interface ResultsOptions {
+  sprint: boolean;
+  newRecord: boolean;
+}
+
+/** 全屏界面：开始菜单（模式选择）/ 暂停 / 结算 */
 export class Screens {
   private menu = el('screen-menu');
   private pause = el('screen-pause');
   private results = el('screen-results');
   private resultsHeadline = el('results-headline');
+  private resultsHeadRow = el('results-head-row');
   private resultsBody = el('results-body');
   private resultsCredits = el('results-credits');
 
@@ -22,8 +28,22 @@ export class Screens {
     el('menu-race').addEventListener('click', cb);
   }
 
+  onMenuSprint(cb: () => void): void {
+    el('menu-sprint').addEventListener('click', cb);
+  }
+
   onMenuGarage(cb: () => void): void {
     el('menu-garage').addEventListener('click', cb);
+  }
+
+  /** 菜单模式项上的最佳成绩标签 */
+  updateRecords(records: { circuit: number | null; sprint: number | null }): void {
+    el('record-circuit').textContent = records.circuit
+      ? `最佳 ${formatRaceTime(records.circuit)}`
+      : '暂无纪录';
+    el('record-sprint').textContent = records.sprint
+      ? `最佳 ${formatRaceTime(records.sprint)}`
+      : '暂无纪录';
   }
 
   showMenu(): void {
@@ -45,12 +65,19 @@ export class Screens {
     playerIndex: number,
     earnedCredits: number | null,
     creditBalance: number,
+    opts: ResultsOptions,
   ): void {
     const ranked = [...stats].sort((a, b) => a.position - b.position);
     const leaderProgress = ranked[0].progress;
     const playerPos = stats[playerIndex].position;
     this.resultsHeadline.textContent =
-      playerPos === 1 ? 'VICTORY!' : `FINISH — P${playerPos}`;
+      (playerPos === 1 ? 'VICTORY!' : `FINISH — P${playerPos}`) +
+      (opts.newRecord ? ' · 新纪录!' : '');
+
+    // 冲刺模式不显示圈速列
+    this.resultsHeadRow.innerHTML = opts.sprint
+      ? '<th>#</th><th>车手</th><th>总时间</th>'
+      : '<th>#</th><th>车手</th><th>总时间</th><th>最佳圈</th>';
 
     this.resultsBody.innerHTML = '';
     ranked.forEach((s) => {
@@ -66,7 +93,7 @@ export class Screens {
         `<td>${s.position}</td>` +
         `<td><span class="driver-swatch" style="background:${cssColor(s.car.color)}"></span>${s.car.name}</td>` +
         `<td>${total}</td>` +
-        `<td>${formatRaceTime(s.bestLapTime)}</td>`;
+        (opts.sprint ? '' : `<td>${formatRaceTime(s.bestLapTime)}</td>`);
       this.resultsBody.appendChild(tr);
     });
 

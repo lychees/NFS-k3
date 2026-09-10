@@ -20,9 +20,9 @@
         <canvas id="minimap" width="180" height="180"></canvas>
       </div>
       <div id="hud-bottom-left">
-        <div class="time-row"><span class="time-label">本圈</span><span id="time-current">0:00.00</span></div>
-        <div class="time-row"><span class="time-label">上圈</span><span id="time-last">--:--.--</span></div>
-        <div class="time-row best"><span class="time-label">最佳</span><span id="time-best">--:--.--</span></div>
+        <div class="time-row"><span class="time-label" id="label-current">本圈</span><span id="time-current">0:00.00</span></div>
+        <div class="time-row"><span class="time-label" id="label-last">上圈</span><span id="time-last">--:--.--</span></div>
+        <div class="time-row best"><span class="time-label" id="label-best">最佳</span><span id="time-best">--:--.--</span></div>
       </div>
       <div id="hud-bottom-right">
         <div id="hud-nitro">
@@ -41,12 +41,13 @@
       <div class="menu-inner">
         <div class="menu-subtitle">ARCADE CHAMPIONSHIP</div>
         <h1 class="menu-title">RETRO RUSH<span class="menu-year">'95</span></h1>
-        <div class="menu-tagline">3 圈 · 3 名对手 · 环形赛道 · 车库改装</div>
+        <div class="menu-tagline">3 圈环道 · 点对点山路 · 车库改装</div>
         <div class="menu-actions">
-          <div class="menu-item blink" id="menu-race">开 始 比 赛</div>
+          <div class="menu-item" id="menu-race">环形赛道 CIRCUIT<span class="menu-record" id="record-circuit"></span></div>
+          <div class="menu-item" id="menu-sprint">点对点 SPRINT<span class="menu-record" id="record-sprint"></span></div>
           <div class="menu-item" id="menu-garage">车 库 GARAGE</div>
         </div>
-        <div class="menu-hint">ENTER 开始 · G 车库</div>
+        <div class="menu-hint blink">1 环道 · 2 冲刺 · G 车库 · ENTER 开始</div>
         <div class="menu-keys">
           <div><b>W / ↑</b> 油门</div>
           <div><b>S / ↓</b> 刹车 / 倒车</div>
@@ -74,7 +75,7 @@
         <h1 class="menu-title small" id="results-headline">FINISH</h1>
         <table id="results-table">
           <thead>
-            <tr><th>#</th><th>车手</th><th>总时间</th><th>最佳圈</th></tr>
+            <tr id="results-head-row"><th>#</th><th>车手</th><th>总时间</th><th>最佳圈</th></tr>
           </thead>
           <tbody id="results-body"></tbody>
         </table>

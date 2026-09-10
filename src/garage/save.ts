@@ -42,6 +42,10 @@ export interface SaveData {
   muted: boolean;
   /** 主音量 0..1 */
   volume: number;
+  /** 上次游玩的赛道模式 */
+  lastMode: 'circuit' | 'sprint';
+  /** 各赛道最佳总用时（秒） */
+  records: { circuit: number | null; sprint: number | null };
 }
 
 export const UPGRADE_MAX = 5;
@@ -115,6 +119,8 @@ export function defaultSave(): SaveData {
     bloom: true,
     muted: false,
     volume: 0.8,
+    lastMode: 'circuit',
+    records: { circuit: null, sprint: null },
   };
 }
 
@@ -152,6 +158,11 @@ export function loadSave(): SaveData {
         typeof data.volume === 'number' && Number.isFinite(data.volume)
           ? Math.min(1, Math.max(0, data.volume))
           : 0.8,
+      lastMode: data.lastMode === 'sprint' || data.lastMode === 'circuit' ? data.lastMode : 'circuit',
+      records: {
+        circuit: validRecord(data.records?.circuit),
+        sprint: validRecord(data.records?.sprint),
+      },
     };
   } catch {
     return base;
@@ -209,3 +220,6 @@ const isLivery = (v: unknown): v is LiveryId =>
   typeof v === 'string' && (LIVERIES as { id: string }[]).some((l) => l.id === v);
 
 const isRim = (v: unknown): v is RimStyle => v === 'sport' || v === 'mesh' || v === 'dish';
+
+const validRecord = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;

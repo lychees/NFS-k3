@@ -46,9 +46,9 @@ function hills(x: number, z: number): number {
   );
 }
 
-const heightFromGround = (g: GroundInfo, x: number, z: number): number => {
+const heightFromGround = (g: GroundInfo, x: number, z: number, hillScale: number): number => {
   const far = Math.min(g.d / 160, 1);
-  const hill = hills(x, z) * (0.35 + 0.65 * far);
+  const hill = hills(x, z) * hillScale * (0.35 + 0.65 * far);
   const w = smoothstep(9, 80, g.d);
   return lerp(g.roadY - 0.35, hill, w);
 };
@@ -57,27 +57,48 @@ export interface Terrain {
   mesh: THREE.Mesh;
   heightAt: (x: number, z: number) => number;
   groundInfo: GroundSampler;
+  /** 地形覆盖范围（树木摆放用） */
+  bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
 }
 
-/** 起伏地形：靠近赛道处贴合路面高度，远处为低多边形丘陵 */
+/** 起伏地形：靠近赛道处贴合路面高度，远处为低多边形丘陵；尺寸自适应赛道范围 */
 export function createTerrain(track: Track): Terrain {
   const groundInfo = createGroundSampler(track);
+  const hillScale = track.def.hills;
   const heightAt = (x: number, z: number): number =>
-    heightFromGround(groundInfo(x, z), x, z);
+    heightFromGround(groundInfo(x, z), x, z, hillScale);
 
-  const size = 1500;
-  const segs = 150;
-  const geo = new THREE.PlaneGeometry(size, size, segs, segs);
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const s of track.samples) {
+    minX = Math.min(minX, s.pos.x);
+    maxX = Math.max(maxX, s.pos.x);
+    minZ = Math.min(minZ, s.pos.z);
+    maxZ = Math.max(maxZ, s.pos.z);
+  }
+  const margin = 480;
+  minX -= margin;
+  maxX += margin;
+  minZ -= margin;
+  maxZ += margin;
+  const sizeX = Math.max(1500, maxX - minX);
+  const sizeZ = Math.max(1500, maxZ - minZ);
+  const cx = (minX + maxX) / 2;
+  const cz = (minZ + maxZ) / 2;
+  const bounds = { minX: cx - sizeX / 2, maxX: cx + sizeX / 2, minZ: cz - sizeZ / 2, maxZ: cz + sizeZ / 2 };
+
+  const segsX = Math.min(210, Math.ceil(sizeX / 10));
+  const segsZ = Math.min(210, Math.ceil(sizeZ / 10));
+  const geo = new THREE.PlaneGeometry(sizeX, sizeZ, segsX, segsZ);
   geo.rotateX(-Math.PI / 2);
 
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
   const color = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
+    const x = pos.getX(i) + cx;
+    const z = pos.getZ(i) + cz;
     const g = groundInfo(x, z);
-    const y = heightFromGround(g, x, z);
+    const y = heightFromGround(g, x, z, hillScale);
     pos.setY(i, y);
 
     const n = Math.sin(x * 0.11) * Math.cos(z * 0.13) * 0.5 + 0.5;
@@ -92,8 +113,9 @@ export function createTerrain(track: Track): Terrain {
 
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 });
   const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(cx, 0, cz);
   mesh.receiveShadow = true;
-  return { mesh, heightAt, groundInfo };
+  return { mesh, heightAt, groundInfo, bounds };
 }
 
 /** 渐变天穹 */
@@ -145,11 +167,16 @@ function mulberry32(seed: number): () => number {
 }
 
 /** 路边植被：树干 / 树冠 / 灌木三个 InstancedMesh 控制 draw call */
-export function createVegetation(terrain: Terrain): THREE.Group {
+export function createVegetation(terrain: Terrain, density = 1): THREE.Group {
   const rand = mulberry32(1995);
   const group = new THREE.Group();
+  const b = terrain.bounds;
+  const spanX = b.maxX - b.minX;
+  const spanZ = b.maxZ - b.minZ;
+  const randX = () => b.minX + rand() * spanX;
+  const randZ = () => b.minZ + rand() * spanZ;
 
-  const treeCount = 240;
+  const treeCount = Math.round(240 * density);
   const trunkGeo = new THREE.CylinderGeometry(0.22, 0.32, 2.4, 6);
   trunkGeo.translate(0, 1.2, 0);
   const leafGeo = new THREE.ConeGeometry(1.8, 4.4, 7);
@@ -171,10 +198,10 @@ export function createVegetation(terrain: Terrain): THREE.Group {
 
   let placed = 0;
   let attempts = 0;
-  while (placed < treeCount && attempts < 6000) {
+  while (placed < treeCount && attempts < 9000) {
     attempts++;
-    const x = (rand() - 0.5) * 1300;
-    const z = (rand() - 0.5) * 1300;
+    const x = randX();
+    const z = randZ();
     const g = terrain.groundInfo(x, z);
     if (g.d < 17 || g.d > 500) continue;
     const s = 0.8 + rand() * 0.9;
@@ -194,17 +221,17 @@ export function createVegetation(terrain: Terrain): THREE.Group {
   leaves.instanceMatrix.needsUpdate = true;
   if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true;
 
-  const bushCount = 130;
+  const bushCount = Math.round(130 * density);
   const bushGeo = new THREE.IcosahedronGeometry(0.9, 0);
   const bushMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
   const bushes = new THREE.InstancedMesh(bushGeo, bushMat, bushCount);
   bushes.castShadow = true;
   let bPlaced = 0;
   attempts = 0;
-  while (bPlaced < bushCount && attempts < 4000) {
+  while (bPlaced < bushCount && attempts < 5000) {
     attempts++;
-    const x = (rand() - 0.5) * 1200;
-    const z = (rand() - 0.5) * 1200;
+    const x = randX();
+    const z = randZ();
     const g = terrain.groundInfo(x, z);
     if (g.d < 13 || g.d > 60) continue;
     const s = 0.6 + rand() * 1.1;

@@ -1,4 +1,4 @@
-import { CHECKPOINT_COUNT, TOTAL_LAPS } from '../track/trackData';
+import { GRID_SLOTS, SPRINT_GRID_SLOTS, type TrackDef } from '../track/trackData';
 import { wrap01 } from '../utils/math';
 import type { Car } from '../car/car';
 import type { Track } from '../track/track';
@@ -7,11 +7,11 @@ export type RaceState = 'menu' | 'countdown' | 'racing' | 'paused' | 'finished';
 
 export interface RacerStats {
   car: Car;
-  /** 沿赛道的累计里程（米，起点前为负）—— 圈数/检查点/名次的统一依据 */
+  /** 沿赛道的累计里程（米）—— 环道起点前为负；冲刺道从发车格起算 */
   progress: number;
   lastT: number;
-  lap: number; // 已完成圈数
-  checkpoint: number; // 本圈已过检查点数
+  lap: number; // 已完成圈数（冲刺道恒 0，冲线后置 1）
+  checkpoint: number;
   lapStartTime: number;
   lastLapTime: number | null;
   bestLapTime: number | null;
@@ -20,16 +20,9 @@ export interface RacerStats {
   position: number;
 }
 
-const GRID_SLOTS = [
-  { dist: -10, lat: 2.4 },
-  { dist: -17, lat: -2.4 },
-  { dist: -24, lat: 2.4 },
-  { dist: -31, lat: -2.4 },
-];
-
 const COUNTDOWN_SECONDS = 3;
 
-/** 比赛流程：倒计时 -> 竞速 -> 结算；圈数 / 检查点 / 名次判定 */
+/** 比赛流程：倒计时 -> 竞速 -> 结算；环道计圈 / 冲刺计里程，名次按进度排序 */
 export class RaceManager {
   state: RaceState = 'menu';
   private stateBeforePause: RaceState = 'menu';
@@ -40,6 +33,11 @@ export class RaceManager {
   readonly cars: Car[];
   readonly playerIndex: number;
   stats: RacerStats[] = [];
+
+  def: TrackDef | null = null;
+  /** 冲刺道：无圈数，进度达标即完赛 */
+  sprint = false;
+  finishDist = 0;
 
   constructor(cars: Car[], playerIndex: number) {
     this.cars = cars;
@@ -60,18 +58,24 @@ export class RaceManager {
   }
 
   startRace(track: Track): void {
+    const def = track.def;
+    this.def = def;
+    this.sprint = !def.closed;
+    this.finishDist = track.length - def.startOffset;
+    const slots = this.sprint ? SPRINT_GRID_SLOTS : GRID_SLOTS;
+
     // 玩家排最后一位发车，经典街机设定
     const order = this.cars.map((_, i) => i).sort((a, b) =>
       a === this.playerIndex ? 1 : b === this.playerIndex ? -1 : a - b,
     );
     order.forEach((carIdx, slot) => {
-      const g = GRID_SLOTS[slot];
+      const g = slots[slot];
       this.cars[carIdx].reset(track, g.dist, g.lat);
     });
 
     this.stats = this.cars.map((car, i) => ({
       car,
-      progress: GRID_SLOTS[order.indexOf(i)].dist,
+      progress: slots[order.indexOf(i)].dist - def.startOffset,
       lastT: car.trackT,
       lap: 0,
       checkpoint: 0,
@@ -114,24 +118,40 @@ export class RaceManager {
       }
       return;
     }
-    if (this.state !== 'racing') return;
+    if (this.state !== 'racing' || !this.def) return;
+    const def = this.def;
 
     this.raceTime += dt;
 
     for (const s of this.stats) {
-      // 累计里程：t 差分回绕到 [-0.5, 0.5]，跳跃过大视为异常丢弃
-      let d = wrap01(s.car.trackT) - wrap01(s.lastT);
-      if (d > 0.5) d -= 1;
-      if (d < -0.5) d += 1;
+      // 累计里程：环道 t 差分回绕，冲刺道单调递增；跳跃过大视为异常丢弃
+      const tNow = this.sprint ? s.car.trackT : wrap01(s.car.trackT);
+      let d = this.sprint ? tNow - s.lastT : tNow - wrap01(s.lastT);
+      if (!this.sprint) {
+        if (d > 0.5) d -= 1;
+        if (d < -0.5) d += 1;
+      }
       const dm = d * track.length;
       if (Math.abs(dm) < 40) s.progress += dm;
-      s.lastT = wrap01(s.car.trackT);
+      s.lastT = tNow;
 
-      if (s.progress > 0) {
+      if (s.progress <= 0) continue;
+
+      if (this.sprint) {
+        s.checkpoint = Math.min(
+          def.checkpoints,
+          Math.floor(s.progress / (this.finishDist / def.checkpoints)),
+        );
+        if (!s.finished && s.progress >= this.finishDist) {
+          s.finished = true;
+          s.finishTime = this.raceTime;
+          s.lap = 1;
+        }
+      } else {
         const lapDist = track.length;
         s.checkpoint = Math.min(
-          CHECKPOINT_COUNT,
-          Math.floor((s.progress % lapDist) / (lapDist / CHECKPOINT_COUNT)),
+          def.checkpoints,
+          Math.floor((s.progress % lapDist) / (lapDist / def.checkpoints)),
         );
         const lapsDone = Math.floor(s.progress / lapDist);
         if (lapsDone > s.lap) {
@@ -140,7 +160,7 @@ export class RaceManager {
           s.lastLapTime = lapTime;
           if (s.bestLapTime === null || lapTime < s.bestLapTime) s.bestLapTime = lapTime;
           s.lap = lapsDone;
-          if (s.lap >= TOTAL_LAPS && !s.finished) {
+          if (s.lap >= def.laps && !s.finished) {
             s.finished = true;
             s.finishTime = this.raceTime;
           }

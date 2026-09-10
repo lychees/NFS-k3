@@ -67,6 +67,12 @@ export class AIDriver {
       throttle = 1;
     }
 
+    // 已完赛：放松巡航，避免在终点线前抖动（冲刺道终点钳制预瞄点）
+    if (aiProgress >= track.length) {
+      throttle = Math.min(throttle, 0.15);
+      brake = 0;
+    }
+
     return { throttle, brake, steer, handbrake: false, nitro: false };
   }
 }

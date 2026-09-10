@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { CONTROL_POINTS, ROAD_HALF_WIDTH, RUNOFF_WIDTH, TRACK_SAMPLES } from './trackData';
 import { clamp, wrap01 } from '../utils/math';
+import type { TrackDef } from './trackData';
 
 export interface TrackSample {
   pos: THREE.Vector3;
@@ -11,7 +11,7 @@ export interface TrackSample {
 }
 
 export interface NearestResult {
-  /** 弧长参数 [0,1) */
+  /** 弧长参数 [0,1]（闭合赛道回绕到 [0,1)） */
   t: number;
   /** 赛道中心线上的投影点 */
   pos: THREE.Vector3;
@@ -25,21 +25,25 @@ export interface NearestResult {
 export const headingFromTangent = (tangent: THREE.Vector3): number =>
   Math.atan2(tangent.x, tangent.z);
 
-/** 闭合 Catmull-Rom 样条赛道：弧长均匀采样 + 最近点查询 */
+/** Catmull-Rom 样条赛道：闭合环道与开放点对点共用一套采样/查询代码 */
 export class Track {
+  readonly def: TrackDef;
   readonly curve: THREE.CatmullRomCurve3;
   readonly length: number;
-  readonly halfWidth = ROAD_HALF_WIDTH;
-  readonly runoffWidth = RUNOFF_WIDTH;
+  readonly closed: boolean;
   readonly samples: TrackSample[] = [];
 
-  constructor() {
-    this.curve = new THREE.CatmullRomCurve3(CONTROL_POINTS, true, 'catmullrom', 0.5);
+  constructor(def: TrackDef) {
+    this.def = def;
+    this.closed = def.closed;
+    const points = def.points.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+    this.curve = new THREE.CatmullRomCurve3(points, def.closed, 'catmullrom', 0.5);
     this.length = this.curve.getLength();
 
     const up = new THREE.Vector3(0, 1, 0);
-    for (let i = 0; i < TRACK_SAMPLES; i++) {
-      const t = i / TRACK_SAMPLES;
+    const n = def.samples;
+    for (let i = 0; i < n; i++) {
+      const t = def.closed ? i / n : i / (n - 1);
       const pos = this.curve.getPointAt(t);
       const tangent = this.curve.getTangentAt(t);
       tangent.y = 0;
@@ -50,17 +54,27 @@ export class Track {
     }
   }
 
-  /** 弧长参数 -> 里程（米） */
+  get halfWidth(): number {
+    return this.def.halfWidth;
+  }
+
+  get runoffWidth(): number {
+    return this.def.runoffWidth;
+  }
+
+  /** 里程（米）-> 弧长参数：闭合回绕，开放钳制 */
   tAtDistance(dist: number): number {
-    return wrap01(dist / this.length);
+    const t = dist / this.length;
+    return this.closed ? wrap01(t) : clamp(t, 0, 1);
   }
 
   /** 插值采样（返回新对象，供 AI / 相机等低频使用） */
   sampleAt(t: number): TrackSample {
-    const u = wrap01(t) * TRACK_SAMPLES;
-    const i0 = Math.floor(u) % TRACK_SAMPLES;
-    const i1 = (i0 + 1) % TRACK_SAMPLES;
-    const f = u - Math.floor(u);
+    const n = this.samples.length;
+    const u = (this.closed ? wrap01(t) : clamp(t, 0, 1)) * (this.closed ? n : n - 1);
+    const i0 = this.closed ? Math.floor(u) % n : Math.min(Math.floor(u), n - 2);
+    const i1 = this.closed ? (i0 + 1) % n : i0 + 1;
+    const f = clamp(u - Math.floor(u), 0, 1);
     const a = this.samples[i0];
     const b = this.samples[i1];
     return {
@@ -86,11 +100,18 @@ export class Track {
       }
     }
 
-    const prev = this.projectOnSegment(p, (best - 1 + n) % n, best);
-    const next = this.projectOnSegment(p, best, (best + 1) % n);
-    const seg = next.d2 <= prev.d2 ? next : prev;
+    const hasPrev = this.closed || best > 0;
+    const hasNext = this.closed || best < n - 1;
+    const prev = hasPrev
+      ? this.projectOnSegment(p, (best - 1 + n) % n, best)
+      : null;
+    const next = hasNext ? this.projectOnSegment(p, best, (best + 1) % n) : null;
+    const seg =
+      prev === null ? next! : next === null ? prev : next.d2 <= prev.d2 ? next : prev;
 
-    const t = wrap01((seg.i0 + seg.s) / n);
+    const divisor = this.closed ? n : n - 1;
+    const tRaw = (seg.i0 + seg.s) / divisor;
+    const t = this.closed ? wrap01(tRaw) : clamp(tRaw, 0, 1);
     const a = this.samples[seg.i0];
     const b = this.samples[(seg.i0 + 1) % n];
     const pos = a.pos.clone().lerp(b.pos, seg.s);

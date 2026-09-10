@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { TRACK_SAMPLES } from './trackData';
 import { headingFromTangent, type Track } from './track';
 
 /** 程序生成的沥青贴图：噪点 + 白边线 + 中央虚线 */
@@ -33,9 +32,10 @@ function makeAsphaltTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-/** 沿样条的路面 ribbon 几何 */
+/** 沿样条的路面 ribbon 几何（闭合回绕 / 开放止于一端） */
 export function buildRoad(track: Track, anisotropy: number): THREE.Mesh {
-  const n = TRACK_SAMPLES;
+  const n = track.samples.length;
+  const segs = track.closed ? n : n - 1;
   const hw = track.halfWidth;
   const tileCount = Math.round(track.length / 8);
 
@@ -58,7 +58,8 @@ export function buildRoad(track: Track, anisotropy: number): THREE.Mesh {
     uvs[i * 4 + 1] = v;
     uvs[i * 4 + 2] = 1;
     uvs[i * 4 + 3] = v;
-
+  }
+  for (let i = 0; i < segs; i++) {
     const a = i * 2;
     const b = i * 2 + 1;
     const c = ((i + 1) % n) * 2;
@@ -82,7 +83,8 @@ export function buildRoad(track: Track, anisotropy: number): THREE.Mesh {
 
 /** 红白相间的路缘石（顶点着色，每 1.5m 左右换色） */
 export function buildCurbs(track: Track): THREE.Mesh {
-  const n = TRACK_SAMPLES;
+  const n = track.samples.length;
+  const segs = track.closed ? n : n - 1;
   const hw = track.halfWidth;
   const red = new THREE.Color(0xc02a20);
   const white = new THREE.Color(0xe8e6df);
@@ -106,7 +108,7 @@ export function buildCurbs(track: Track): THREE.Mesh {
       );
       for (let k = 0; k < 3; k++) colors.push(col.r, col.g, col.b);
     }
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < segs; i++) {
       const r0 = rowStart + i * 3;
       const r1 = rowStart + ((i + 1) % n) * 3;
       if (side > 0) {
@@ -133,7 +135,8 @@ export function buildCurbs(track: Track): THREE.Mesh {
 
 /** 道路两侧的护栏（硬边界可视化） */
 export function buildGuardrails(track: Track): THREE.Mesh {
-  const n = TRACK_SAMPLES;
+  const n = track.samples.length;
+  const segs = track.closed ? n : n - 1;
   const lat = track.halfWidth + track.runoffWidth;
 
   const positions: number[] = [];
@@ -147,7 +150,7 @@ export function buildGuardrails(track: Track): THREE.Mesh {
       const z = s.pos.z + s.left.z * side * lat;
       positions.push(x, s.pos.y + 0.02, z, x, s.pos.y + 0.95, z);
     }
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < segs; i++) {
       const a = rowStart + i * 2;
       const b = rowStart + ((i + 1) % n) * 2;
       if (side > 0) indices.push(a, b, a + 1, a + 1, b, b + 1);
@@ -171,9 +174,14 @@ export function buildGuardrails(track: Track): THREE.Mesh {
   return mesh;
 }
 
-/** 起点拱门：双立柱 + 横幅 */
-export function buildStartGantry(track: Track): THREE.Group {
-  const s = track.sampleAt(0);
+/** 起点/终点拱门：双立柱霓虹 + 横幅（终点带格子旗） */
+export function buildGantry(
+  track: Track,
+  t: number,
+  label: string,
+  checkered: boolean,
+): THREE.Group {
+  const s = track.sampleAt(t);
   const hw = track.halfWidth;
   const span = (hw + 1.6) * 2;
 
@@ -190,7 +198,7 @@ export function buildStartGantry(track: Track): THREE.Group {
       new THREE.BoxGeometry(0.12, 5.6, 0.74),
       new THREE.MeshStandardMaterial({
         color: 0x0a0a0a,
-        emissive: side > 0 ? 0xff2fd4 : 0x18e0ff,
+        emissive: checkered ? 0x58ff5a : side > 0 ? 0xff2fd4 : 0x18e0ff,
         emissiveIntensity: 2.4,
       }),
     );
@@ -204,11 +212,21 @@ export function buildStartGantry(track: Track): THREE.Group {
   const ctx = canvas.getContext('2d')!;
   ctx.fillStyle = '#14141c';
   ctx.fillRect(0, 0, 512, 80);
-  ctx.fillStyle = '#ffd320';
+  if (checkered) {
+    const cells = 16;
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < cells; c++) {
+        ctx.fillStyle = (r + c) % 2 === 0 ? '#e8e8e8' : '#14141c';
+        ctx.fillRect(c * (512 / cells), r * 12, 512 / cells, 12);
+        ctx.fillRect(c * (512 / cells), 80 - 12 + r * 12 - 12, 512 / cells, 12);
+      }
+    }
+  }
+  ctx.fillStyle = checkered ? '#58ff5a' : '#ffd320';
   ctx.font = 'italic 900 46px "Arial Black", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText("RETRO RUSH '95", 256, 42);
+  ctx.fillText(label, 256, 42);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
 
