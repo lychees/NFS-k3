@@ -1,0 +1,73 @@
+# RETRO RUSH '95 — 3D 街机竞速
+
+用现代 Web 技术复刻 90 年代极品飞车（OpenNFS 复刻对象）的核心体验：街机手感、环形赛道、AI 对手、圈速计时，外加**车库改装**、**涂装拉花**与**氮气加速**。
+
+**在线试玩**：https://lychees.github.io/NFS-k3/
+
+## 玩法
+
+- 3 圈环形赛道，第 4 位发车，超越 3 名 AI 对手夺冠
+- 草地会明显减速，护栏外有硬边界 + 减速惩罚
+- 手刹（Space）过弯可漂移（带轮胎烟雾）；草地扬尘
+- **氮气加速**（Shift / N）：消耗氮气条获得推力爆发，FOV 冲击 + 尾焰 + 速度线 + 相机震动；每过起点线回复 30% 容量
+- 3 圈后进入结算画面（名次 / 总时间 / 最佳圈 / 积分奖励）
+
+## 车库（GARAGE）
+
+开始菜单进入（点击 或 按 G），左侧 3D 旋转预览，右侧改装：
+
+- **外观**：8 种车漆、3 种尾翼（无/低尾翼/GT 大尾翼）、3 种轮毂（五辐/网状/大饼）、6 种霓虹底盘灯（含关闭）
+- **涂装（LIVERY）**：7 种程序化生成的拉花预设 —— 无涂装 / 双条纹 / 号码圆标 / 双色拼漆 / 格子旗 / 烈焰 / 斜纹；每种可配独立**强调色**（6 色），号码圆标可显示自填**赛车号码（0–99）**。涂装以透明贴片（decal）叠加在主漆之上，不影响玻璃与尾灯
+- **性能**（0-5 级，积分购买，逐级 60/90/120/150/180 CR）：
+  - 引擎：极速 61→72 m/s，加速 16→24 m/s²
+  - 轮胎：抓地 7.5→12，漂移恢复更快，转向更灵敏
+  - 氮气瓶：容量 30→100，推力 9→24 m/s²
+- **积分**：完赛按名次奖励 1st=100 / 2nd=70 / 3rd=50 / 4th=30 CR
+- 积分、改装、外观、涂装、泛光开关均存 localStorage
+- AI 车辆每局随机套用外观与涂装方案
+
+## 键位
+
+| 按键 | 功能 |
+| --- | --- |
+| W / ↑ | 油门 |
+| S / ↓ | 刹车 / 倒车 |
+| A D / ← → | 转向 |
+| Space | 手刹漂移 |
+| Shift / N | 氮气加速 |
+| C | 追逐 / 引擎盖视角切换 |
+| G | 车库（主菜单） |
+| Esc | 暂停 / 返回 |
+| Enter | 确认（开始 / 再来一局） |
+
+## 技术栈
+
+- Vite 5 + TypeScript（strict）+ Three.js（含 addons 的 UnrealBloomPass 泛光后处理）
+- 无物理引擎：`src/car/carPhysics.ts` 自实现街机车辆模型（纵/侧向速度分解 + 抓地力指数衰减），物理参数按改装配置实例化（`makeTuning`）
+- 无外部素材：车辆由挤压轮廓 + BoxGeometry 拼装，涂装/贴图/粒子纹理全部 Canvas 或 shader 程序生成
+- 赛道由闭合 Catmull-Rom 样条定义，路面 / 路缘石 / 护栏 / 地形全部程序化生成
+- 植被 InstancedMesh；烟雾粒子单 Points 一次 draw call；泛光半分辨率（车库可关）
+
+## 运行
+
+```bash
+npm install
+npm run dev      # 开发服务器（默认 http://localhost:5173）
+npm run build    # tsc 类型检查 + 生产构建（base = /NFS-k3/）
+npm run preview  # 预览构建产物
+```
+
+## 部署（GitHub Pages）
+
+仓库已内置 `.github/workflows/deploy.yml`：push 到 `main` 分支后自动执行 `npm ci → npm run build → 部署 dist 到 GitHub Pages`（需在仓库 Settings → Pages 中选择 "GitHub Actions" 作为来源）。生产构建的 `base` 为 `/NFS-k3/`（`vite.config.ts` 按 command 条件设置，开发模式为 `/`），页面地址为 https://lychees.github.io/NFS-k3/ 。
+
+## 代码结构
+
+- `src/track/` — 赛道路线（样条）、路面/地形/天空/植被的程序化生成
+- `src/car/` — 车辆模型拼装、涂装贴片（`livery.ts`）、街机物理（调校参数）、Car 实体
+- `src/ai/` — AI 对手（赛车线预瞄 + 橡皮筋）
+- `src/race/` — 输入、比赛流程（倒计时/圈数/名次）、追逐相机
+- `src/garage/` — 存档（localStorage）、车库 DOM 界面、3D 预览场景
+- `src/fx/` — 烟雾粒子池、氮气尾焰、速度线、泛光后处理
+- `src/ui/` — HUD（含氮气条）、Canvas 小地图、菜单/暂停/结算界面
+- `src/main.ts` — 启动与主循环

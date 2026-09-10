@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RETRO RUSH '95 — 3D 街机竞速</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <canvas id="speedlines"></canvas>
+
+    <div id="hud" class="hidden">
+      <div id="hud-top-left">
+        <div id="hud-position">4<span class="pos-total">/4</span></div>
+        <div id="hud-lap">LAP 1/3</div>
+      </div>
+      <div id="hud-top-right">
+        <canvas id="minimap" width="180" height="180"></canvas>
+      </div>
+      <div id="hud-bottom-left">
+        <div class="time-row"><span class="time-label">本圈</span><span id="time-current">0:00.00</span></div>
+        <div class="time-row"><span class="time-label">上圈</span><span id="time-last">--:--.--</span></div>
+        <div class="time-row best"><span class="time-label">最佳</span><span id="time-best">--:--.--</span></div>
+      </div>
+      <div id="hud-bottom-right">
+        <div id="hud-nitro">
+          <div id="nitro-label">NITRO</div>
+          <div id="nitro-bar"><div id="nitro-fill"></div></div>
+        </div>
+        <div id="hud-speed">0</div>
+        <div id="hud-speed-unit">km/h</div>
+      </div>
+      <div id="hud-center" class="hidden"></div>
+      <div id="hud-message" class="hidden">⚠ 逆向行驶</div>
+    </div>
+
+    <div id="screen-menu" class="screen">
+      <div class="menu-inner">
+        <div class="menu-subtitle">ARCADE CHAMPIONSHIP</div>
+        <h1 class="menu-title">RETRO RUSH<span class="menu-year">'95</span></h1>
+        <div class="menu-tagline">3 圈 · 3 名对手 · 环形赛道 · 车库改装</div>
+        <div class="menu-actions">
+          <div class="menu-item blink" id="menu-race">开 始 比 赛</div>
+          <div class="menu-item" id="menu-garage">车 库 GARAGE</div>
+        </div>
+        <div class="menu-hint">ENTER 开始 · G 车库</div>
+        <div class="menu-keys">
+          <div><b>W / ↑</b> 油门</div>
+          <div><b>S / ↓</b> 刹车 / 倒车</div>
+          <div><b>A D / ← →</b> 转向</div>
+          <div><b>SPACE</b> 手刹漂移</div>
+          <div><b>SHIFT / N</b> 氮气加速</div>
+          <div><b>C</b> 切换视角</div>
+          <div><b>ESC</b> 暂停 / 返回</div>
+          <div><b>ENTER</b> 确认</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="screen-pause" class="screen hidden">
+      <div class="menu-inner">
+        <h1 class="menu-title small">PAUSED</h1>
+        <div class="menu-start blink">ESC / ENTER 继续</div>
+      </div>
+    </div>
+
+    <div id="screen-results" class="screen hidden">
+      <div class="menu-inner">
+        <div class="menu-subtitle">RACE COMPLETE</div>
+        <h1 class="menu-title small" id="results-headline">FINISH</h1>
+        <table id="results-table">
+          <thead>
+            <tr><th>#</th><th>车手</th><th>总时间</th><th>最佳圈</th></tr>
+          </thead>
+          <tbody id="results-body"></tbody>
+        </table>
+        <div id="results-credits" class="results-credits"></div>
+        <div class="menu-start blink">ENTER 再来一局</div>
+      </div>
+    </div>
+
+    <div id="screen-garage" class="screen garage hidden">
+      <div class="garage-panel">
+        <div class="garage-head">
+          <div class="menu-subtitle">GARAGE / 车库</div>
+          <div id="garage-credits">CR 0</div>
+        </div>
+        <div class="garage-section">
+          <div class="garage-label">车漆 PAINT</div>
+          <div id="garage-paints" class="garage-row"></div>
+        </div>
+        <div class="garage-section">
+          <div class="garage-label">尾翼 SPOILER</div>
+          <div id="garage-spoilers" class="garage-row"></div>
+        </div>
+        <div class="garage-section">
+          <div class="garage-label">轮毂 RIMS</div>
+          <div id="garage-rims" class="garage-row"></div>
+        </div>
+        <div class="garage-section">
+          <div class="garage-label">底盘灯 UNDERGLOW</div>
+          <div id="garage-glows" class="garage-row"></div>
+        </div>
+        <div class="garage-section">
+          <div class="garage-label">涂装 LIVERY</div>
+          <div id="garage-liveries" class="garage-row"></div>
+          <div class="garage-subrow">
+            <span class="garage-sublabel">强调色</span>
+            <div id="garage-accents" class="garage-row"></div>
+          </div>
+          <div class="garage-subrow">
+            <span class="garage-sublabel">号码</span>
+            <div class="number-ctrl">
+              <button id="livery-num-dec" class="num-btn">−</button>
+              <input id="livery-number" type="number" min="0" max="99" />
+              <button id="livery-num-inc" class="num-btn">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="garage-section">
+          <div class="garage-label">性能 PERFORMANCE</div>
+          <div id="garage-upgrades"></div>
+        </div>
+        <div class="garage-section">
+          <div class="garage-label">画质 QUALITY</div>
+          <div id="garage-quality" class="garage-row"></div>
+        </div>
+        <div class="menu-item" id="garage-back">返 回</div>
+        <div class="menu-hint">ESC 返回</div>
+      </div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
