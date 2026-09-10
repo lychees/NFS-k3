@@ -7,7 +7,7 @@ function el<T extends HTMLElement>(id: string): T {
 }
 
 export interface HudData {
-  mode: 'circuit' | 'sprint';
+  mode: 'circuit' | 'sprint' | 'knockout';
   speedKmh: number;
   position: number;
   totalCars: number;
@@ -21,6 +21,10 @@ export interface HudData {
   sprintPct: number; // 0..100
   sprintKm: number;
   sprintRecord: number | null;
+  // 淘汰赛
+  carsLeft: number;
+  /** 距下次淘汰的秒数 */
+  elimCountdown: number;
   // 通用
   countdownText: string | null;
   showGo: boolean;
@@ -42,6 +46,7 @@ export class Hud {
   private timeLast = el('time-last');
   private timeBest = el('time-best');
   private center = el('hud-center');
+  private banner = el('hud-banner');
   private message = el('hud-message');
   private nitroFill = el('nitro-fill');
   private muted = el('hud-muted');
@@ -65,13 +70,26 @@ export class Hud {
     this.muted.classList.toggle('hidden', !m);
   }
 
+  /** 大字事件横幅（淘汰 / 决赛圈），由主循环控制展示时长 */
+  showBanner(text: string): void {
+    this.banner.textContent = text;
+    this.banner.classList.remove('hidden');
+    this.banner.classList.remove('pop');
+    void this.banner.offsetWidth; // 重启动画
+    this.banner.classList.add('pop');
+  }
+
+  hideBanner(): void {
+    this.banner.classList.add('hidden');
+  }
+
   update(d: HudData): void {
     if (d.mode !== this.lastMode) {
       this.lastMode = d.mode;
-      const sprint = d.mode === 'sprint';
-      this.labelCurrent.textContent = sprint ? '用时' : '本圈';
-      this.labelLast.textContent = sprint ? '里程' : '上圈';
-      this.labelBest.textContent = sprint ? '纪录' : '最佳';
+      this.labelCurrent.textContent = d.mode === 'circuit' ? '本圈' : '用时';
+      this.labelLast.textContent =
+        d.mode === 'sprint' ? '里程' : d.mode === 'knockout' ? '淘汰' : '上圈';
+      this.labelBest.textContent = d.mode === 'sprint' ? '纪录' : d.mode === 'knockout' ? '—' : '最佳';
       this.lastLap = '';
     }
 
@@ -90,7 +108,9 @@ export class Hud {
     const lapText =
       d.mode === 'sprint'
         ? `SPRINT ${Math.min(100, Math.round(d.sprintPct))}%`
-        : `LAP ${Math.min(d.lap + 1, d.totalLaps)}/${d.totalLaps}`;
+        : d.mode === 'knockout'
+          ? `CARS LEFT: ${d.carsLeft}`
+          : `LAP ${Math.min(d.lap + 1, d.totalLaps)}/${d.totalLaps}`;
     if (lapText !== this.lastLap) {
       this.lastLap = lapText;
       this.lap.textContent = lapText;
@@ -98,9 +118,13 @@ export class Hud {
 
     this.timeCurrent.textContent = formatRaceTime(d.currentLapTime);
     this.timeLast.textContent =
-      d.mode === 'sprint' ? `${d.sprintKm.toFixed(2)} km` : formatRaceTime(d.lastLapTime);
+      d.mode === 'sprint'
+        ? `${d.sprintKm.toFixed(2)} km`
+        : d.mode === 'knockout'
+          ? `${Math.ceil(d.elimCountdown)}s`
+          : formatRaceTime(d.lastLapTime);
     this.timeBest.textContent =
-      d.mode === 'sprint' ? formatRaceTime(d.sprintRecord) : formatRaceTime(d.bestLapTime);
+      d.mode === 'sprint' ? formatRaceTime(d.sprintRecord) : d.mode === 'knockout' ? '—' : formatRaceTime(d.bestLapTime);
 
     const centerText = d.countdownText ?? (d.showGo ? 'GO!' : '');
     if (centerText !== this.lastCenter) {

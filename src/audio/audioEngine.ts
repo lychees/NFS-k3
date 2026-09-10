@@ -9,7 +9,8 @@ export type SfxName =
   | 'victory'
   | 'nitro'
   | 'thud'
-  | 'shift';
+  | 'shift'
+  | 'eliminate';
 
 interface NoiseVoice {
   filter: BiquadFilterNode;
@@ -167,6 +168,29 @@ class AudioEngine {
         this.blip(300, 0.05, 'square', 0.14);
         this.blip(180, 0.07, 'square', 0.12, 0.04);
         break;
+      case 'eliminate': {
+        // 低沉电子下行音 + 噪声垫底
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(210, t);
+        osc.frequency.exponentialRampToValueAtTime(52, t + 0.45);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.34, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+        const lp = this.ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 900;
+        osc.connect(lp).connect(g).connect(this.master);
+        osc.start(t);
+        osc.stop(t + 0.6);
+        osc.onended = () => {
+          g.disconnect();
+          lp.disconnect();
+        };
+        this.noiseShot(0.25, 0.14, null, 'lowpass', 300);
+        break;
+      }
     }
   }
 

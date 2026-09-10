@@ -10,7 +10,7 @@ function el<T extends HTMLElement>(id: string): T {
 const cssColor = (hex: number): string => `#${hex.toString(16).padStart(6, '0')}`;
 
 export interface ResultsOptions {
-  sprint: boolean;
+  mode: 'circuit' | 'sprint' | 'knockout';
   newRecord: boolean;
 }
 
@@ -30,6 +30,10 @@ export class Screens {
 
   onMenuSprint(cb: () => void): void {
     el('menu-sprint').addEventListener('click', cb);
+  }
+
+  onMenuKnockout(cb: () => void): void {
+    el('menu-knockout').addEventListener('click', cb);
   }
 
   onMenuGarage(cb: () => void): void {
@@ -70,14 +74,23 @@ export class Screens {
     const ranked = [...stats].sort((a, b) => a.position - b.position);
     const leaderProgress = ranked[0].progress;
     const playerPos = stats[playerIndex].position;
-    this.resultsHeadline.textContent =
-      (playerPos === 1 ? 'VICTORY!' : `FINISH — P${playerPos}`) +
-      (opts.newRecord ? ' · 新纪录!' : '');
+    const headline =
+      opts.mode === 'knockout'
+        ? playerPos === 1
+          ? 'VICTORY!'
+          : `ELIMINATED — 第 ${playerPos} 名`
+        : playerPos === 1
+          ? 'VICTORY!'
+          : `FINISH — P${playerPos}`;
+    this.resultsHeadline.textContent = headline + (opts.newRecord ? ' · 新纪录!' : '');
 
-    // 冲刺模式不显示圈速列
-    this.resultsHeadRow.innerHTML = opts.sprint
-      ? '<th>#</th><th>车手</th><th>总时间</th>'
-      : '<th>#</th><th>车手</th><th>总时间</th><th>最佳圈</th>';
+    // 冲刺不显示圈速列；淘汰赛显示状态列
+    this.resultsHeadRow.innerHTML =
+      opts.mode === 'knockout'
+        ? '<th>#</th><th>车手</th><th>状态</th>'
+        : opts.mode === 'sprint'
+          ? '<th>#</th><th>车手</th><th>总时间</th>'
+          : '<th>#</th><th>车手</th><th>总时间</th><th>最佳圈</th>';
 
     this.resultsBody.innerHTML = '';
     ranked.forEach((s) => {
@@ -85,15 +98,24 @@ export class Screens {
       const isPlayer = stats.indexOf(s) === playerIndex;
       if (isPlayer) tr.classList.add('player-row');
 
-      const total = s.finished
-        ? formatRaceTime(s.finishTime)
-        : `+${Math.max(0, Math.round(leaderProgress - s.progress))} m`;
+      let thirdCol: string;
+      if (opts.mode === 'knockout') {
+        thirdCol = s.eliminated
+          ? `淘汰 @ ${formatRaceTime(s.elimTime)}`
+          : s.finished
+            ? `冠军 ${formatRaceTime(s.finishTime)}`
+            : '幸存';
+      } else {
+        thirdCol = s.finished
+          ? formatRaceTime(s.finishTime)
+          : `+${Math.max(0, Math.round(leaderProgress - s.progress))} m`;
+      }
 
       tr.innerHTML =
         `<td>${s.position}</td>` +
         `<td><span class="driver-swatch" style="background:${cssColor(s.car.color)}"></span>${s.car.name}</td>` +
-        `<td>${total}</td>` +
-        (opts.sprint ? '' : `<td>${formatRaceTime(s.bestLapTime)}</td>`);
+        `<td>${thirdCol}</td>` +
+        (opts.mode === 'circuit' ? `<td>${formatRaceTime(s.bestLapTime)}</td>` : '');
       this.resultsBody.appendChild(tr);
     });
 

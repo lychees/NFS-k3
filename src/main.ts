@@ -7,7 +7,7 @@ import { Car } from './car/car';
 import { makeTuning, NITRO_LAP_BONUS } from './car/carPhysics';
 import { AIDriver } from './ai/aiDriver';
 import { Input } from './race/input';
-import { RaceManager } from './race/raceManager';
+import { RaceManager, parkingInput } from './race/raceManager';
 import { ChaseCamera } from './race/chaseCamera';
 import { Hud } from './ui/hud';
 import { Minimap } from './ui/minimap';
@@ -168,17 +168,24 @@ let prevCountdown: string | null = null;
 let prevRaceState = race.state;
 let thudCooldown = 0;
 let prevNitroActive = false;
+let bannerTimer = 0;
+let duelAnnounced = false;
 
 // ---------- 赛道模式切换 ----------
 
-let mode: TrackId = save.lastMode;
-let bundle = bundles[mode];
+/** 游戏模式：环道计圈 / 点对点 / 淘汰赛（淘汰赛在环道上进行） */
+type GameMode = 'circuit' | 'sprint' | 'knockout';
 
-function applyMode(next: TrackId): void {
+const bundleIdOf = (m: GameMode): TrackId => (m === 'sprint' ? 'sprint' : 'circuit');
+
+let mode: GameMode = save.lastMode;
+let bundle = bundles[bundleIdOf(mode)];
+
+function applyMode(next: GameMode): void {
   mode = next;
-  bundle = bundles[mode];
+  bundle = bundles[bundleIdOf(mode)];
   for (const id of Object.keys(bundles) as TrackId[]) {
-    bundles[id].group.visible = id === mode;
+    bundles[id].group.visible = bundles[id] === bundle;
   }
   minimap.loadTrack(bundle.track);
 }
@@ -252,12 +259,12 @@ function openGarage(): void {
 
 // ---------- 流程控制 ----------
 
-function startRace(nextMode: TrackId): void {
+function startRace(nextMode: GameMode): void {
   if (nextMode !== mode) applyMode(nextMode);
   save.lastMode = mode;
   persistSave(save);
   player.setTuning(makeTuning(save.upgrades));
-  race.startRace(bundle.track);
+  race.startRace(bundle.track, { knockout: mode === 'knockout' });
   chaseCam.snapBehind();
   resultsShown = false;
   lastPlayerLap = 0;
@@ -266,6 +273,9 @@ function startRace(nextMode: TrackId): void {
   gearbox = initGearbox();
   prevCountdown = null;
   prevNitroActive = false;
+  bannerTimer = 0;
+  duelAnnounced = false;
+  hud.hideBanner();
   screens.hideMenu();
   screens.hideResults();
   hud.show();
@@ -289,6 +299,12 @@ screens.onMenuSprint(() => {
     startRace('sprint');
   }
 });
+screens.onMenuKnockout(() => {
+  if (race.state === 'menu' && !inGarage) {
+    audio.playSfx('uiConfirm');
+    startRace('knockout');
+  }
+});
 screens.onMenuGarage(() => {
   audio.playSfx('uiConfirm');
   openGarage();
@@ -309,6 +325,10 @@ input.onPress('Digit1', () => {
 
 input.onPress('Digit2', () => {
   if (race.state === 'menu' && !inGarage) startRace('sprint');
+});
+
+input.onPress('Digit3', () => {
+  if (race.state === 'menu' && !inGarage) startRace('knockout');
 });
 
 input.onPress('KeyG', () => {
@@ -506,20 +526,54 @@ function animate(): void {
           ? input.getCarInput()
           : playerAutopilot.computeInput(player, track, race.player.progress, race.player.progress, dt);
       aiCars.forEach((car, i) => {
-        car.input = aiDrivers[i].computeInput(
-          car,
-          track,
-          race.stats[PLAYER].progress,
-          race.stats[i + 1].progress,
-          dt,
-        );
+        const st = race.stats[i + 1];
+        if (st.eliminated) {
+          // 被淘汰 AI：刹车靠边，停稳后冻结
+          if (!st.parked) {
+            if (Math.abs(car.state.forwardSpeed) > 1) {
+              car.input = parkingInput(car);
+            } else {
+              st.parked = true;
+              car.input = { throttle: 0, brake: 1, steer: 0, handbrake: false, nitro: false };
+              car.state.vx = 0;
+              car.state.vz = 0;
+            }
+          }
+        } else {
+          car.input = aiDrivers[i].computeInput(
+            car,
+            track,
+            race.stats[PLAYER].progress,
+            race.stats[i + 1].progress,
+            dt,
+          );
+        }
       });
-      for (const car of cars) car.update(dt, track);
+      cars.forEach((car, idx) => {
+        if (race.stats[idx]?.parked) return;
+        car.update(dt, track);
+      });
       resolveCarCollisions();
       updateSmoke(dt);
 
       if (state === 'racing') {
         race.update(dt, track);
+
+        // 淘汰事件：大字横幅 + 音效；剩 2 车决赛圈提示
+        if (race.elimEvents.length > 0) {
+          for (const e of race.elimEvents) {
+            hud.showBanner(`ELIMINATED: ${e.name}`);
+            bannerTimer = 2.6;
+            audio.playSfx('eliminate');
+          }
+          race.elimEvents.length = 0;
+        }
+        if (race.finalDuel && !duelAnnounced) {
+          duelAnnounced = true;
+          hud.showBanner('FINAL DUEL!');
+          bannerTimer = 2.6;
+          audio.playSfx('countGo');
+        }
 
         // 氮气回复：环道每圈 / 冲刺道每检查点
         if (race.player.lap > lastPlayerLap) {
@@ -536,25 +590,26 @@ function animate(): void {
         // 氮气开启瞬间的喷射嘶声
         if (player.state.nitroActive && !prevNitroActive) audio.playSfx('nitro');
       } else if (!resultsShown) {
-        // 玩家冲线：结算 + 积分 + 纪录 + 胜利音
+        // 玩家冲线/夺冠/被淘汰：结算 + 积分 + 纪录 + 胜利音
         resultsShown = true;
+        hud.hideBanner();
         const earned = RACE_REWARDS[race.player.position - 1] ?? RACE_REWARDS[3];
         save.credits += earned;
         const finishTime = race.player.finishTime;
-        if (finishTime !== null) {
-          const prev = save.records[mode];
+        if (!race.knockout && finishTime !== null) {
+          const prev = save.records[mode as 'circuit' | 'sprint'];
           if (prev === null || finishTime < prev) {
-            save.records[mode] = finishTime;
+            save.records[mode as 'circuit' | 'sprint'] = finishTime;
             newRecord = true;
             screens.updateRecords(save.records);
           }
         }
         persistSave(save);
         screens.showResults(race.stats, PLAYER, earned, save.credits, {
-          sprint: race.sprint,
+          mode,
           newRecord,
         });
-        audio.playSfx('victory');
+        audio.playSfx(race.player.position === 1 ? 'victory' : 'eliminate');
       }
 
       speedLines.setActive(state === 'racing' && player.state.nitroActive);
@@ -563,11 +618,17 @@ function animate(): void {
 
     updateAudio(dt, state);
 
+    // 事件横幅到时隐藏
+    if (bannerTimer > 0) {
+      bannerTimer -= dt;
+      if (bannerTimer <= 0) hud.hideBanner();
+    }
+
     chaseCam.update(dt, player, camera, state === 'racing' && player.state.nitroActive);
 
     const p = race.player;
     hud.update({
-      mode: race.sprint ? 'sprint' : 'circuit',
+      mode,
       speedKmh: player.speedKmh,
       lap: p.lap,
       totalLaps: race.def?.laps ?? 3,
@@ -579,6 +640,8 @@ function animate(): void {
       sprintPct: race.finishDist > 0 ? clamp((p.progress / race.finishDist) * 100, 0, 100) : 0,
       sprintKm: Math.max(0, p.progress) / 1000,
       sprintRecord: save.records.sprint,
+      carsLeft: race.carsLeft,
+      elimCountdown: race.elimTimer,
       countdownText: race.countdownText,
       showGo: race.showGo,
       wrongWay: state === 'racing' && player.state.forwardSpeed < -2,
@@ -588,7 +651,7 @@ function animate(): void {
       cars.map((c, i) => ({
         x: c.pos.x,
         z: c.pos.z,
-        color: cssColor(c.color),
+        color: race.stats[i]?.eliminated ? '#8a8a8a' : cssColor(c.color),
         isPlayer: i === PLAYER,
       })),
     );

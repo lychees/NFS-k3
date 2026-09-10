@@ -1,6 +1,7 @@
 import { GRID_SLOTS, SPRINT_GRID_SLOTS, type TrackDef } from '../track/trackData';
 import { wrap01 } from '../utils/math';
 import type { Car } from '../car/car';
+import type { CarInput } from '../car/carPhysics';
 import type { Track } from '../track/track';
 
 export type RaceState = 'menu' | 'countdown' | 'racing' | 'paused' | 'finished';
@@ -18,11 +19,37 @@ export interface RacerStats {
   finished: boolean;
   finishTime: number | null;
   position: number;
+  // 淘汰赛
+  eliminated: boolean;
+  elimTime: number | null;
+  /** 被淘汰时的名次（= 当时剩余车数） */
+  elimPosition: number | null;
+  /** 被淘汰且已停稳（主循环置位） */
+  parked: boolean;
+}
+
+export interface ElimEvent {
+  name: string;
+  isPlayer: boolean;
+  position: number;
 }
 
 const COUNTDOWN_SECONDS = 3;
+const ELIM_INTERVAL = 20; // 淘汰间隔（秒）
 
-/** 比赛流程：倒计时 -> 竞速 -> 结算；环道计圈 / 冲刺计里程，名次按进度排序 */
+/** 被淘汰车辆靠边停车的输入（纯函数，可测） */
+export function parkingInput(car: Car): CarInput {
+  // lateral 左正右负：向左半边路的车继续向左靠，反之向右
+  return {
+    throttle: 0,
+    brake: 1,
+    steer: car.lateral > 0 ? -0.8 : 0.8,
+    handbrake: false,
+    nitro: false,
+  };
+}
+
+/** 比赛流程：倒计时 -> 竞速 -> 结算；环道计圈 / 冲刺计里程 / 淘汰赛定时淘汰 */
 export class RaceManager {
   state: RaceState = 'menu';
   private stateBeforePause: RaceState = 'menu';
@@ -39,6 +66,12 @@ export class RaceManager {
   sprint = false;
   finishDist = 0;
 
+  /** 淘汰赛：每 ELIM_INTERVAL 秒淘汰里程最低者 */
+  knockout = false;
+  elimTimer = ELIM_INTERVAL;
+  /** 淘汰事件队列，主循环消费后清空 */
+  elimEvents: ElimEvent[] = [];
+
   constructor(cars: Car[], playerIndex: number) {
     this.cars = cars;
     this.playerIndex = playerIndex;
@@ -46,6 +79,15 @@ export class RaceManager {
 
   get player(): RacerStats {
     return this.stats[this.playerIndex];
+  }
+
+  get carsLeft(): number {
+    return this.stats.filter((s) => !s.eliminated).length;
+  }
+
+  /** 剩 2 车进入决赛圈 */
+  get finalDuel(): boolean {
+    return this.knockout && this.state === 'racing' && this.carsLeft === 2;
   }
 
   get countdownText(): string | null {
@@ -57,11 +99,14 @@ export class RaceManager {
     return this.state === 'racing' && this.raceTime < 0.9;
   }
 
-  startRace(track: Track): void {
+  startRace(track: Track, opts?: { knockout?: boolean }): void {
     const def = track.def;
     this.def = def;
     this.sprint = !def.closed;
+    this.knockout = opts?.knockout ?? false;
     this.finishDist = track.length - def.startOffset;
+    this.elimTimer = ELIM_INTERVAL;
+    this.elimEvents = [];
     const slots = this.sprint ? SPRINT_GRID_SLOTS : GRID_SLOTS;
 
     // 玩家排最后一位发车，经典街机设定
@@ -85,6 +130,10 @@ export class RaceManager {
       finished: false,
       finishTime: null,
       position: i + 1,
+      eliminated: false,
+      elimTime: null,
+      elimPosition: null,
+      parked: false,
     }));
 
     this.raceTime = 0;
@@ -160,7 +209,8 @@ export class RaceManager {
           s.lastLapTime = lapTime;
           if (s.bestLapTime === null || lapTime < s.bestLapTime) s.bestLapTime = lapTime;
           s.lap = lapsDone;
-          if (s.lap >= def.laps && !s.finished) {
+          // 淘汰赛不按圈数完赛
+          if (!this.knockout && s.lap >= def.laps && !s.finished) {
             s.finished = true;
             s.finishTime = this.raceTime;
           }
@@ -174,6 +224,41 @@ export class RaceManager {
       s.position = i + 1;
     });
 
+    if (this.knockout) {
+      this.elimTimer -= dt;
+      if (this.elimTimer <= 0) {
+        this.elimTimer += ELIM_INTERVAL;
+        this.eliminateLast();
+      }
+    }
+
     if (this.player.finished) this.state = 'finished';
+  }
+
+  /** 淘汰当前里程最低的未淘汰者；玩家被淘汰或成为最后幸存者时结束比赛 */
+  private eliminateLast(): void {
+    const alive = this.stats.filter((s) => !s.eliminated);
+    if (alive.length <= 1) return;
+    const last = alive.reduce((a, b) => (a.progress <= b.progress ? a : b));
+    last.eliminated = true;
+    last.elimTime = this.raceTime;
+    last.elimPosition = alive.length;
+    this.elimEvents.push({ name: last.car.name, isPlayer: last === this.player, position: alive.length });
+
+    if (last === this.player) {
+      // 玩家被淘汰：最终名次 = 淘汰时剩余数，幸存者按里程补位
+      this.player.position = alive.length;
+      const rest = alive.filter((s) => s !== last).sort((a, b) => b.progress - a.progress);
+      rest.forEach((s, i) => {
+        s.position = i + 1;
+      });
+      this.player.finished = true;
+      this.player.finishTime = this.raceTime;
+    } else if (alive.length === 2) {
+      // 淘汰后只剩玩家：玩家即冠军
+      this.player.position = 1;
+      this.player.finished = true;
+      this.player.finishTime = this.raceTime;
+    }
   }
 }
