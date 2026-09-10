@@ -24,6 +24,14 @@ import { GaragePreview } from './garage/garagePreview';
 import { SmokePool } from './fx/smoke';
 import { SpeedLines } from './fx/speedLines';
 import { PostFX } from './fx/postfx';
+import { audio } from './audio/audioEngine';
+import {
+  grassIntensity,
+  initGearbox,
+  skidIntensity,
+  stepGearbox,
+} from './audio/engineModel';
+import { clamp } from './utils/math';
 
 const cssColor = (hex: number): string => `#${hex.toString(16).padStart(6, '0')}`;
 
@@ -83,6 +91,13 @@ scene.add(createVegetation(terrain));
 // ---------- 存档与车辆 ----------
 
 const save = loadSave();
+audio.setMuted(save.muted);
+audio.setVolume(save.volume);
+
+// 浏览器自动播放策略：首次用户手势时创建/恢复 AudioContext
+const unlockAudio = (): void => audio.unlock();
+window.addEventListener('pointerdown', unlockAudio);
+window.addEventListener('keydown', unlockAudio);
 
 const PLAYER = 0;
 const player = new Car('YOU', save.appearance, makeTuning(save.upgrades), save.livery);
@@ -126,6 +141,11 @@ const chaseCam = new ChaseCamera();
 
 let resultsShown = false;
 let lastPlayerLap = 0;
+let gearbox = initGearbox();
+let prevCountdown: string | null = null;
+let prevRaceState = race.state;
+let thudCooldown = 0;
+let prevNitroActive = false;
 
 // ---------- 车库 ----------
 
@@ -147,17 +167,20 @@ const garageScreen = new GarageScreen({
     persistSave(save);
     garagePreview.setAppearance(save.appearance, save.livery);
     garageScreen.refresh(save);
+    audio.playSfx('uiSelect');
   },
   onLivery: (patch) => {
     Object.assign(save.livery, patch);
     persistSave(save);
     garagePreview.setAppearance(save.appearance, save.livery);
     garageScreen.refresh(save);
+    audio.playSfx('uiSelect');
   },
   onBuy: (key) => {
     if (tryBuy(save, key)) {
       player.setTuning(makeTuning(save.upgrades));
       garageScreen.refresh(save);
+      audio.playSfx('uiConfirm');
     }
   },
   onToggleBloom: () => {
@@ -165,8 +188,19 @@ const garageScreen = new GarageScreen({
     persistSave(save);
     postfx.setBloom(save.bloom);
     garageScreen.refresh(save);
+    audio.playSfx('uiSelect');
   },
-  onBack: closeGarage,
+  onVolume: (delta) => {
+    save.volume = clamp(Math.round((save.volume + delta) * 10) / 10, 0, 1);
+    persistSave(save);
+    audio.setVolume(save.volume);
+    garageScreen.refresh(save);
+    audio.playSfx('uiSelect');
+  },
+  onBack: () => {
+    audio.playSfx('uiSelect');
+    closeGarage();
+  },
 });
 
 function openGarage(): void {
@@ -185,9 +219,13 @@ function startRace(): void {
   chaseCam.snapBehind();
   resultsShown = false;
   lastPlayerLap = 0;
+  gearbox = initGearbox();
+  prevCountdown = null;
+  prevNitroActive = false;
   screens.hideMenu();
   screens.hideResults();
   hud.show();
+  hud.setMuted(save.muted);
 }
 
 // 初始摆放车辆后回到菜单（背景画面用）
@@ -196,27 +234,52 @@ race.toMenu();
 screens.showMenu();
 
 screens.onMenuRace(() => {
-  if (race.state === 'menu' && !inGarage) startRace();
+  if (race.state === 'menu' && !inGarage) {
+    audio.playSfx('uiConfirm');
+    startRace();
+  }
 });
-screens.onMenuGarage(() => openGarage());
+screens.onMenuGarage(() => {
+  audio.playSfx('uiConfirm');
+  openGarage();
+});
 
 input.onPress('Enter', () => {
   if (inGarage) return;
   if (race.state === 'menu' || race.state === 'finished') startRace();
-  else if (race.state === 'paused') race.resume();
+  else if (race.state === 'paused') {
+    race.resume();
+    audio.resumeGame();
+  }
 });
 
 input.onPress('KeyG', () => {
-  if (race.state === 'menu' && !inGarage) openGarage();
+  if (race.state === 'menu' && !inGarage) {
+    audio.playSfx('uiConfirm');
+    openGarage();
+  }
+});
+
+input.onPress('KeyM', () => {
+  save.muted = audio.toggleMute();
+  persistSave(save);
+  hud.setMuted(save.muted);
+  garageScreen.refresh(save);
 });
 
 input.onPress('Escape', () => {
   if (inGarage) {
+    audio.playSfx('uiSelect');
     closeGarage();
     return;
   }
-  if (race.state === 'racing' || race.state === 'countdown') race.pause();
-  else if (race.state === 'paused') race.resume();
+  if (race.state === 'racing' || race.state === 'countdown') {
+    race.pause();
+    audio.suspendGame();
+  } else if (race.state === 'paused') {
+    race.resume();
+    audio.resumeGame();
+  }
 });
 
 input.onPress('KeyC', () => {
@@ -224,7 +287,10 @@ input.onPress('KeyC', () => {
 });
 
 window.addEventListener('blur', () => {
-  if (race.state === 'racing') race.pause();
+  if (race.state === 'racing') {
+    race.pause();
+    audio.suspendGame();
+  }
 });
 
 // ---------- 车车间碰撞（圆形截面，等质量弹性近似） ----------
@@ -256,6 +322,10 @@ function resolveCarCollisions(): void {
       const vaN = a.state.vx * nx + a.state.vz * nz;
       const vbN = b.state.vx * nx + b.state.vz * nz;
       if (vaN - vbN > 0) {
+        if (vaN - vbN > 3 && thudCooldown <= 0) {
+          audio.playSfx('thud', Math.min(1, (vaN - vbN) / 15));
+          thudCooldown = 0.3;
+        }
         const cm = (vaN + vbN) / 2;
         const vaN2 = cm - RESTITUTION * (vaN - cm);
         const vbN2 = cm - RESTITUTION * (vbN - cm);
@@ -302,6 +372,39 @@ function updateSmoke(dt: number): void {
   });
 }
 
+// ---------- 声音：每帧参数更新（节点常驻，只调参数） ----------
+
+function updateAudio(dt: number, state: typeof race.state): void {
+  thudCooldown = Math.max(0, thudCooldown - dt);
+  const racing = state === 'racing';
+  const speedRatio = Math.abs(player.state.forwardSpeed) / player.tuning.maxSpeed;
+  const gb = stepGearbox(gearbox, speedRatio, dt);
+  gearbox = gb.state;
+  if (gb.upshifted && racing) audio.playSfx('shift');
+
+  audio.setEngine(gb.rpm, racing ? player.input.throttle : 0, {
+    active: true,
+    shifting: gearbox.shiftT > 0,
+    nitro: player.state.nitroActive,
+  });
+  audio.setSkid(racing ? skidIntensity(player.state.latSpeed, player.speedKmh) : 0);
+  audio.setGrass(racing ? grassIntensity(player.speedKmh, player.onRoad) : 0);
+
+  if (racing && player.wallImpact > 3 && thudCooldown <= 0) {
+    audio.playSfx('thud', Math.min(1, player.wallImpact / 12));
+    thudCooldown = 0.3;
+  }
+
+  // 倒计时蜂鸣：数字变化 3→2→1 短音，GO 长音
+  if (state === 'countdown') {
+    const c = race.countdownText;
+    if (c !== null && c !== prevCountdown) audio.playSfx('countBeep');
+    prevCountdown = c;
+  }
+  if (prevRaceState === 'countdown' && state === 'racing') audio.playSfx('countGo');
+  prevRaceState = state;
+}
+
 // ---------- 主循环 ----------
 
 const clock = new THREE.Clock();
@@ -313,6 +416,9 @@ function animate(): void {
   const dt = Math.min(clock.getDelta(), 0.05);
 
   if (inGarage) {
+    audio.setEngine(0.18, 0, { active: false, shifting: false, nitro: false });
+    audio.setSkid(0);
+    audio.setGrass(0);
     garagePreview.update(dt);
     garagePreview.frameCamera(camera);
     postfx.render(garagePreview.scene, camera);
@@ -325,6 +431,7 @@ function animate(): void {
     menuTime += dt;
     chaseCam.menuOrbit(camera, startLine, menuTime);
     speedLines.setActive(false);
+    updateAudio(dt, state);
   } else if (state === 'paused') {
     screens.showPause(true);
     speedLines.setActive(false);
@@ -362,17 +469,24 @@ function animate(): void {
           const cap = player.tuning.nitroCapacity;
           player.state.nitroFuel = Math.min(cap, player.state.nitroFuel + cap * NITRO_LAP_BONUS);
         }
+
+        // 氮气开启瞬间的喷射嘶声
+        if (player.state.nitroActive && !prevNitroActive) audio.playSfx('nitro');
       } else if (!resultsShown) {
-        // 玩家冲线：结算 + 积分奖励
+        // 玩家冲线：结算 + 积分奖励 + 胜利音
         resultsShown = true;
         const earned = RACE_REWARDS[race.player.position - 1] ?? RACE_REWARDS[3];
         save.credits += earned;
         persistSave(save);
         screens.showResults(race.stats, PLAYER, earned, save.credits);
+        audio.playSfx('victory');
       }
 
       speedLines.setActive(state === 'racing' && player.state.nitroActive);
+      prevNitroActive = player.state.nitroActive;
     }
+
+    updateAudio(dt, state);
 
     chaseCam.update(dt, player, camera, state === 'racing' && player.state.nitroActive);
 

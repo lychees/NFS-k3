@@ -36,6 +36,8 @@ export interface GarageCallbacks {
   onLivery(patch: Partial<LiveryConfig>): void;
   onBuy(key: keyof UpgradeLevels): void;
   onToggleBloom(): void;
+  /** 音量步进 ±0.1 */
+  onVolume(delta: number): void;
   onBack(): void;
 }
 
@@ -108,6 +110,7 @@ export class GarageScreen {
     }
 
     el('quality-bloom').textContent = `泛光 BLOOM：${save.bloom ? '开' : '关'}`;
+    el('vol-label').textContent = `${Math.round(save.volume * 100)}%${save.muted ? ' · 静音' : ''}`;
   }
 
   private buildAppearanceRows(): void {
@@ -309,5 +312,7 @@ export class GarageScreen {
     btn.id = 'quality-bloom';
     btn.addEventListener('click', () => this.cbs.onToggleBloom());
     el('garage-quality').appendChild(btn);
+    el('vol-dec').addEventListener('click', () => this.cbs.onVolume(-0.1));
+    el('vol-inc').addEventListener('click', () => this.cbs.onVolume(0.1));
   }
 }

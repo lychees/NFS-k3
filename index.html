@@ -34,6 +34,7 @@
       </div>
       <div id="hud-center" class="hidden"></div>
       <div id="hud-message" class="hidden">⚠ 逆向行驶</div>
+      <div id="hud-muted" class="hidden">MUTED · M 取消静音</div>
     </div>
 
     <div id="screen-menu" class="screen">
@@ -53,6 +54,7 @@
           <div><b>SPACE</b> 手刹漂移</div>
           <div><b>SHIFT / N</b> 氮气加速</div>
           <div><b>C</b> 切换视角</div>
+          <div><b>M</b> 静音</div>
           <div><b>ESC</b> 暂停 / 返回</div>
           <div><b>ENTER</b> 确认</div>
         </div>
@@ -124,8 +126,16 @@
           <div id="garage-upgrades"></div>
         </div>
         <div class="garage-section">
-          <div class="garage-label">画质 QUALITY</div>
+          <div class="garage-label">画质 / 声音</div>
           <div id="garage-quality" class="garage-row"></div>
+          <div class="garage-subrow">
+            <span class="garage-sublabel">音量</span>
+            <div class="number-ctrl">
+              <button id="vol-dec" class="num-btn">−</button>
+              <span id="vol-label">80%</span>
+              <button id="vol-inc" class="num-btn">+</button>
+            </div>
+          </div>
         </div>
         <div class="menu-item" id="garage-back">返 回</div>
         <div class="menu-hint">ESC 返回</div>

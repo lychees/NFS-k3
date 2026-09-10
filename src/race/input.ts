@@ -3,7 +3,7 @@ import type { CarInput } from '../car/carPhysics';
 const GAME_CODES = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyC', 'Escape', 'Enter',
-  'ShiftLeft', 'ShiftRight', 'KeyN', 'KeyG',
+  'ShiftLeft', 'ShiftRight', 'KeyN', 'KeyG', 'KeyM',
 ]);
 
 /** 键盘状态采集 + 按键事件分发 */

@@ -36,6 +36,8 @@ export class Car {
   trackT = 0;
   lateral = 0;
   onRoad = true;
+  /** 本帧蹭墙吸收的向外速度（碰撞音效用），无则 0 */
+  wallImpact = 0;
 
   private flames: NitroFlame[] = [];
   private wheelSpin = 0;
@@ -130,6 +132,7 @@ export class Car {
     this.lateral = n.lateral;
     this.onRoad = Math.abs(n.lateral) <= track.halfWidth + 0.3;
 
+    this.wallImpact = 0;
     const maxLat = track.halfWidth + track.runoffWidth - 0.5;
     if (Math.abs(n.lateral) > maxLat) {
       const sign = Math.sign(n.lateral);
@@ -138,6 +141,7 @@ export class Car {
       st.x = this.pos.x;
       st.z = this.pos.z;
       const vOut = (st.vx * n.left.x + st.vz * n.left.z) * sign;
+      this.wallImpact = Math.max(0, vOut);
       if (vOut > 0) {
         st.vx -= n.left.x * vOut * sign;
         st.vz -= n.left.z * vOut * sign;

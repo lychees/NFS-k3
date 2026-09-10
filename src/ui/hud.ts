@@ -34,6 +34,7 @@ export class Hud {
   private center = el('hud-center');
   private message = el('hud-message');
   private nitroFill = el('nitro-fill');
+  private muted = el('hud-muted');
 
   private lastSpeed = -1;
   private lastPos = '';
@@ -47,6 +48,10 @@ export class Hud {
 
   hide(): void {
     this.root.classList.add('hidden');
+  }
+
+  setMuted(m: boolean): void {
+    this.muted.classList.toggle('hidden', !m);
   }
 
   update(d: HudData): void {

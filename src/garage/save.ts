@@ -39,6 +39,9 @@ export interface SaveData {
   appearance: AppearanceConfig;
   livery: LiveryConfig;
   bloom: boolean;
+  muted: boolean;
+  /** 主音量 0..1 */
+  volume: number;
 }
 
 export const UPGRADE_MAX = 5;
@@ -110,6 +113,8 @@ export function defaultSave(): SaveData {
     appearance: { paint: PAINTS[0].color, spoiler: 'low', rims: 'sport', underglow: 0x18e0ff },
     livery: { id: 'stripes', accent: 0xf2f2f2, number: 7 },
     bloom: true,
+    muted: false,
+    volume: 0.8,
   };
 }
 
@@ -142,6 +147,11 @@ export function loadSave(): SaveData {
         number: clampCarNumber(data.livery?.number),
       },
       bloom: typeof data.bloom === 'boolean' ? data.bloom : true,
+      muted: typeof data.muted === 'boolean' ? data.muted : false,
+      volume:
+        typeof data.volume === 'number' && Number.isFinite(data.volume)
+          ? Math.min(1, Math.max(0, data.volume))
+          : 0.8,
     };
   } catch {
     return base;
