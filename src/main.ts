@@ -6,6 +6,7 @@ import { createSky, createTerrain, createVegetation } from './track/environment'
 import { Car } from './car/car';
 import { Cockpit } from './car/cockpit';
 import { makeTuning, NITRO_LAP_BONUS } from './car/carPhysics';
+import { DAMAGE_REPAIR_PER_LAP } from './car/damage';
 import { AIDriver } from './ai/aiDriver';
 import { Input } from './race/input';
 import { RaceManager, parkingInput } from './race/raceManager';
@@ -488,6 +489,8 @@ let duelAnnounced = false;
 function startRace(nextMode: GameMode, twoPlayer: boolean): void {
   if (nextMode !== mode) applyMode(nextMode);
   applyConditions();
+  // 损伤开关联动全场（玩家/AI/警车一视同仁），新车开局已在 car.reset 清零
+  for (const c of [...allCars, ...pursuit.cars]) c.damageEnabled = save.damageEnabled;
   if (!twoPlayer) {
     save.lastMode = mode;
     persistSave(save);
@@ -601,17 +604,23 @@ let setup2P = false;
 function openSetup(m: GameMode, twoPlayer: boolean): void {
   setupMode = m;
   setup2P = twoPlayer;
-  screens.showSetup(SETUP_NAMES[m], save.lastConditions, {
+  screens.showSetup(SETUP_NAMES[m], save.lastConditions, save.damageEnabled, {
     onTime: (t) => {
       save.lastConditions.time = t;
       persistSave(save);
-      screens.refreshSetup(save.lastConditions);
+      screens.refreshSetup(save.lastConditions, save.damageEnabled);
       audio.playSfx('uiSelect');
     },
     onWeather: (w) => {
       save.lastConditions.weather = w;
       persistSave(save);
-      screens.refreshSetup(save.lastConditions);
+      screens.refreshSetup(save.lastConditions, save.damageEnabled);
+      audio.playSfx('uiSelect');
+    },
+    onDamage: (enabled) => {
+      save.damageEnabled = enabled;
+      persistSave(save);
+      screens.refreshSetup(save.lastConditions, save.damageEnabled);
       audio.playSfx('uiSelect');
     },
     onStart: () => startFromSetup(),
@@ -731,7 +740,7 @@ input.onPress('Digit1', () => {
   if (screens.inSetup) {
     save.lastConditions.time = 'day';
     persistSave(save);
-    screens.refreshSetup(save.lastConditions);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled);
     audio.playSfx('uiSelect');
     return;
   }
@@ -748,7 +757,7 @@ input.onPress('Digit2', () => {
   if (screens.inSetup) {
     save.lastConditions.time = 'sunset';
     persistSave(save);
-    screens.refreshSetup(save.lastConditions);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled);
     audio.playSfx('uiSelect');
     return;
   }
@@ -765,7 +774,7 @@ input.onPress('Digit3', () => {
   if (screens.inSetup) {
     save.lastConditions.time = 'night';
     persistSave(save);
-    screens.refreshSetup(save.lastConditions);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled);
     audio.playSfx('uiSelect');
     return;
   }
@@ -775,7 +784,7 @@ input.onPress('Digit4', () => {
   if (screens.inSetup) {
     save.lastConditions.weather = 'clear';
     persistSave(save);
-    screens.refreshSetup(save.lastConditions);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled);
     audio.playSfx('uiSelect');
     return;
   }
@@ -785,11 +794,19 @@ input.onPress('Digit5', () => {
   if (screens.inSetup) {
     save.lastConditions.weather = 'rain';
     persistSave(save);
-    screens.refreshSetup(save.lastConditions);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled);
     audio.playSfx('uiSelect');
     return;
   }
   if (race.state === 'menu' && !inGarage) screens.show2PSub(!screens.in2PSub);
+});
+input.onPress('Digit6', () => {
+  if (screens.inSetup) {
+    save.damageEnabled = !save.damageEnabled;
+    persistSave(save);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled);
+    audio.playSfx('uiSelect');
+  }
 });
 
 window.addEventListener('blur', () => {
@@ -828,8 +845,14 @@ function resolveCarCollisions(list: Car[]): void {
       const vaN = a.state.vx * nx + a.state.vz * nz;
       const vbN = b.state.vx * nx + b.state.vz * nz;
       if (vaN - vbN > 0) {
-        if (vaN - vbN > 3 && thudCooldown <= 0) {
-          audio.playSfx('thud', Math.min(1, (vaN - vbN) / 15));
+        const rel = vaN - vbN;
+        if (rel > 3) {
+          // 车车碰撞损伤：双方按相对冲击速度累积
+          a.addImpactDamage(rel, 0.8);
+          b.addImpactDamage(rel, 0.8);
+        }
+        if (rel > 3 && thudCooldown <= 0) {
+          audio.playSfx('thud', Math.min(1, rel / 15));
           thudCooldown = 0.3;
         }
         const cm = (vaN + vbN) / 2;
@@ -854,26 +877,42 @@ function updateSmoke(dt: number): void {
     const lat = Math.abs(car.state.latSpeed);
     const drifting = lat > 4 && car.speedKmh > 25;
     const dust = !car.onRoad && car.speedKmh > 30;
-    let acc = smokeAcc.get(car) ?? 0;
-    if (!drifting && !dust) {
-      smokeAcc.set(car, 0);
-      continue;
-    }
-    acc += dt * (drifting ? Math.min(lat, 12) * 3 : 18);
     const h = car.state.heading;
     const c = Math.cos(h);
     const s = Math.sin(h);
-    while (acc > 1) {
-      acc -= 1;
-      for (const lx of [-0.85, 0.85]) {
-        const lz = -1.45;
+
+    let acc = smokeAcc.get(car) ?? 0;
+    if (drifting || dust) {
+      acc += dt * (drifting ? Math.min(lat, 12) * 3 : 18);
+      while (acc > 1) {
+        acc -= 1;
+        for (const lx of [-0.85, 0.85]) {
+          const lz = -1.45;
+          smoke.spawn(
+            car.pos.x + lx * c + lz * s,
+            car.pos.y + 0.2,
+            car.pos.z - lx * s + lz * c,
+            car.state.vx,
+            car.state.vz,
+            dust ? 1 : 0,
+          );
+        }
+      }
+    }
+
+    // 损伤冒烟：中度少量、重度持续（车头位置，灰黑）
+    const tier = car.damageTier;
+    if (tier >= 2) {
+      acc += dt * (tier >= 3 ? 14 : 4);
+      while (acc > 1) {
+        acc -= 1;
         smoke.spawn(
-          car.pos.x + lx * c + lz * s,
-          car.pos.y + 0.2,
-          car.pos.z - lx * s + lz * c,
+          car.pos.x + s * 1.8,
+          car.pos.y + 0.75,
+          car.pos.z + c * 1.8,
           car.state.vx,
           car.state.vz,
-          dust,
+          2,
         );
       }
     }
@@ -940,6 +979,8 @@ function hudDataFor(idx: number, state: typeof race.state): HudData {
     showGo: race.showGo,
     wrongWay: state === 'racing' && car.state.forwardSpeed < -2,
     nitroRatio: car.nitroRatio,
+    damageRatio: save.damageEnabled ? car.damage / 100 : 0,
+    damageTier: save.damageEnabled ? car.damageTier : 0,
   };
 }
 
@@ -1090,19 +1131,24 @@ function animate(): void {
         audio.playSfx('countGo');
       }
 
-      // 氮气回复：环道每圈 / 冲刺道每检查点（每位人类玩家独立）
+      // 氮气回复（人类玩家）+ 损伤自修（全场车辆）：环道每圈 / 冲刺道每检查点
       field.forEach((f, idx) => {
-        if (f.human === null) return;
         const st = race.stats[idx];
         if (st.lap > f.lastLap) {
           f.lastLap = st.lap;
-          const cap = f.car.tuning.nitroCapacity;
-          f.car.state.nitroFuel = Math.min(cap, f.car.state.nitroFuel + cap * NITRO_LAP_BONUS);
+          f.car.repair(DAMAGE_REPAIR_PER_LAP);
+          if (f.human !== null) {
+            const cap = f.car.tuning.nitroCapacity;
+            f.car.state.nitroFuel = Math.min(cap, f.car.state.nitroFuel + cap * NITRO_LAP_BONUS);
+          }
         }
         if (race.sprint && st.checkpoint > f.lastCheckpoint) {
           f.lastCheckpoint = st.checkpoint;
-          const cap = f.car.tuning.nitroCapacity;
-          f.car.state.nitroFuel = Math.min(cap, f.car.state.nitroFuel + cap * 0.25);
+          f.car.repair(DAMAGE_REPAIR_PER_LAP);
+          if (f.human !== null) {
+            const cap = f.car.tuning.nitroCapacity;
+            f.car.state.nitroFuel = Math.min(cap, f.car.state.nitroFuel + cap * 0.25);
+          }
         }
       });
 
@@ -1145,6 +1191,11 @@ function animate(): void {
           twoPlayer: splitMode,
           p1Pos: race.stats[0]?.position,
           p2Pos: race.stats[1]?.position,
+          damageText: save.damageEnabled
+            ? splitMode
+              ? ` · 损伤 P1 ${Math.round(player.damage)}% / P2 ${Math.round(player2.damage)}%`
+              : ` · 损伤 ${Math.round(player.damage)}%`
+            : '',
         },
       };
       screens.showResults(race.stats, 0, earned, save.credits, lastResults.opts);

@@ -91,8 +91,8 @@ export class SmokePool {
     scene.add(this.points);
   }
 
-  /** color: 0 = 白烟（漂移），1 = 土黄（草地扬尘） */
-  spawn(x: number, y: number, z: number, vx: number, vz: number, dust: boolean): void {
+  /** kind: 0 = 白烟（漂移），1 = 土黄（草地扬尘），2 = 灰黑（损伤冒烟） */
+  spawn(x: number, y: number, z: number, vx: number, vz: number, kind: 0 | 1 | 2): void {
     const p = this.particles.find((q) => !q.alive);
     if (!p) return;
     p.alive = true;
@@ -103,10 +103,13 @@ export class SmokePool {
     p.vy = 1.0 + Math.random() * 1.2;
     p.vz = vz * 0.25 + (Math.random() - 0.5) * 1.2;
     p.age = 0;
-    p.life = 0.9 + Math.random() * 0.5;
+    p.life = kind === 2 ? 1.2 + Math.random() * 0.6 : 0.9 + Math.random() * 0.5;
     p.size = 0.9 + Math.random() * 0.5;
-    if (dust) {
+    if (kind === 1) {
       p.r = 0.62; p.g = 0.55; p.b = 0.38;
+    } else if (kind === 2) {
+      const g2 = 0.13 + Math.random() * 0.06;
+      p.r = g2; p.g = g2; p.b = g2;
     } else {
       const g = 0.85 + Math.random() * 0.1;
       p.r = g; p.g = g; p.b = g;

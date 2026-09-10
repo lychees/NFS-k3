@@ -16,6 +16,8 @@ export interface ReplayPose {
   brake: boolean;
   /** 采样段平均速度（相机 FOV 用） */
   speed: number;
+  /** 损伤档位 0-3（bit3-4 解码） */
+  damageTier: number;
 }
 
 /** 时间 t 处的插值采样；cursors 为每车游标（顺序播放 O(1)，拖动后退 O(n)） */
@@ -49,6 +51,7 @@ export function sampleAt(
     nitro: (flags & FLAG_NITRO) !== 0,
     brake: (flags & FLAG_BRAKE) !== 0,
     speed: t1 > t0 ? segDist / (t1 - t0) : 0,
+    damageTier: (flags >> 3) & 3,
   };
 }
 
@@ -117,6 +120,7 @@ export class ReplayPlayer {
       const pose = sampleAt(tr, this.time, this.cursors, i);
       const car = this.cars[i];
       car.applyReplayPose(pose);
+      car.setDamageTierVisuals(pose.damageTier as 0 | 1 | 2 | 3);
       car.state.forwardSpeed = pose.speed;
       if (i === this.followIdx) followedNitro = pose.nitro;
     });

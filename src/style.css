@@ -830,3 +830,52 @@ body {
 #setup-start {
   margin-top: 30px;
 }
+
+/* ---------- 损伤指示条 ---------- */
+
+.hud-damage {
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.damage-label {
+  font-size: 13px;
+  color: #8a93a8;
+  letter-spacing: 3px;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.damage-bar {
+  width: 120px;
+  height: 10px;
+  border: 2px solid #8a93a8;
+  border-radius: 3px;
+  background: rgba(20, 12, 12, 0.7);
+  overflow: hidden;
+}
+
+.damage-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #58ff5a, #a8e858);
+  transition: width 0.15s linear;
+}
+
+.damage-fill.warn {
+  background: linear-gradient(90deg, #a8e858, #ffd320);
+}
+
+.damage-fill.crit {
+  background: linear-gradient(90deg, #ffd320, #ff4b3e);
+  box-shadow: 0 0 10px rgba(255, 75, 62, 0.8);
+}
+
+.damage-critical {
+  font-size: 13px;
+  color: #ff4b3e;
+  letter-spacing: 2px;
+  animation: blink 0.5s steps(2) infinite;
+}

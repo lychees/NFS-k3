@@ -18,6 +18,14 @@ export interface CarModel {
   headMaterial: THREE.MeshStandardMaterial;
   /** 排气管尾焰锚点 */
   exhausts: THREE.Object3D[];
+  // 损伤系统引用件
+  paint: THREE.MeshPhysicalMaterial;
+  spoilerGroup: THREE.Group;
+  nose: THREE.Mesh;
+  frontBumper: THREE.Mesh;
+  rearBumper: THREE.Mesh;
+  /** 划痕贴花组（损伤 tier>=1 可见） */
+  damageScratches: THREE.Group;
 }
 
 /** 侧面轮廓挤压出车身主体（shape X = 车头方向，挤出轴 = 车宽） */
@@ -99,6 +107,34 @@ function makeWheel(style: RimStyle, side: number): { yaw: THREE.Group; spin: THR
   buildRim(style, side, spin);
   yaw.add(spin);
   return { yaw, spin };
+}
+
+/** 程序化划痕纹理：几道深色折线刮痕（损伤贴花用） */
+function makeScratchTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, 128, 128);
+  for (let i = 0; i < 6; i++) {
+    const x0 = 10 + Math.random() * 60;
+    const y0 = 15 + Math.random() * 90;
+    ctx.strokeStyle = `rgba(20,18,16,${0.5 + Math.random() * 0.35})`;
+    ctx.lineWidth = 1 + Math.random() * 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    let x = x0;
+    let y = y0;
+    for (let k = 0; k < 4; k++) {
+      x += 8 + Math.random() * 18;
+      y += (Math.random() - 0.5) * 16;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 function buildSpoiler(style: SpoilerStyle, paint: THREE.Material, dark: THREE.Material): THREE.Group {
@@ -186,7 +222,8 @@ export function buildCarModel(cfg: AppearanceConfig, livery: LiveryConfig): CarM
     ],
     1.76,
   );
-  body.add(new THREE.Mesh(lowerGeo, paint));
+  const nose = new THREE.Mesh(lowerGeo, paint);
+  body.add(nose);
 
   const cabinGeo = extrudeProfile(
     [
@@ -218,7 +255,30 @@ export function buildCarModel(cfg: AppearanceConfig, livery: LiveryConfig): CarM
     body.add(skirt);
   }
 
-  body.add(buildSpoiler(cfg.spoiler, paint, dark));
+  const spoilerGroup = buildSpoiler(cfg.spoiler, paint, dark);
+  body.add(spoilerGroup);
+
+  // 损伤划痕贴花（预建隐藏，tier>=1 可见）：引擎盖 + 左侧身
+  const damageScratches = new THREE.Group();
+  const scratchTex = makeScratchTexture();
+  const scratchMat = new THREE.MeshStandardMaterial({
+    map: scratchTex,
+    transparent: true,
+    roughness: 0.8,
+    metalness: 0.1,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    depthWrite: false,
+  });
+  const hoodScratch = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.7), scratchMat);
+  hoodScratch.rotation.x = -Math.PI / 2 + Math.atan2(0.3, 2.42);
+  hoodScratch.position.set(0.25, 0.672, 1.1);
+  const sideScratch = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.35), scratchMat);
+  sideScratch.rotation.y = -Math.PI / 2;
+  sideScratch.position.set(-0.885, 0.56, 0.4);
+  damageScratches.add(hoodScratch, sideScratch);
+  damageScratches.visible = false;
+  body.add(damageScratches);
 
   // 前大灯（发光贴片）
   const headMat = new THREE.MeshStandardMaterial({
@@ -309,6 +369,12 @@ export function buildCarModel(cfg: AppearanceConfig, livery: LiveryConfig): CarM
     brakeMaterial,
     headMaterial: headMat,
     exhausts,
+    paint,
+    spoilerGroup,
+    nose,
+    frontBumper,
+    rearBumper,
+    damageScratches,
   };
 }
 

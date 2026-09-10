@@ -29,6 +29,8 @@ export interface ResultsOptions {
   twoPlayer?: boolean;
   p1Pos?: number;
   p2Pos?: number;
+  /** 本场损伤统计（追加在积分行后） */
+  damageText?: string;
 }
 
 /** 全屏界面：开始菜单（模式选择）/ 暂停 / 结算 */
@@ -122,9 +124,11 @@ export class Screens {
   showSetup(
     modeName: string,
     conditions: { time: string; weather: string },
+    damageEnabled: boolean,
     cbs: {
       onTime: (t: 'day' | 'sunset' | 'night') => void;
       onWeather: (w: 'clear' | 'rain') => void;
+      onDamage: (enabled: boolean) => void;
       onStart: () => void;
     },
   ): void {
@@ -132,6 +136,7 @@ export class Screens {
     el('setup-mode-name').textContent = modeName;
     const times = el('setup-times');
     const weathers = el('setup-weathers');
+    const damage = el('setup-damage');
     if (times.childElementCount === 0) {
       for (const t of TIME_OPTIONS) {
         const b = document.createElement('button');
@@ -149,19 +154,32 @@ export class Screens {
         b.addEventListener('click', () => cbs.onWeather(w.id));
         weathers.appendChild(b);
       }
+      for (const [id, name] of [['on', '开 ON'], ['off', '关 OFF']] as const) {
+        const b = document.createElement('button');
+        b.className = 'option';
+        b.dataset.damage = id;
+        b.textContent = name;
+        b.addEventListener('click', () => cbs.onDamage(id === 'on'));
+        damage.appendChild(b);
+      }
       el('setup-start').addEventListener('click', cbs.onStart);
     }
-    this.refreshSetup(conditions);
+    this.refreshSetup(conditions, damageEnabled);
     el('screen-setup').classList.remove('hidden');
   }
 
-  refreshSetup(conditions: { time: string; weather: string }): void {
+  refreshSetup(conditions: { time: string; weather: string }, damageEnabled: boolean): void {
     el('setup-times')
       .querySelectorAll<HTMLElement>('[data-time]')
       .forEach((b) => b.classList.toggle('selected', b.dataset.time === conditions.time));
     el('setup-weathers')
       .querySelectorAll<HTMLElement>('[data-weather]')
       .forEach((b) => b.classList.toggle('selected', b.dataset.weather === conditions.weather));
+    el('setup-damage')
+      .querySelectorAll<HTMLElement>('[data-damage]')
+      .forEach((b) =>
+        b.classList.toggle('selected', (b.dataset.damage === 'on') === damageEnabled),
+      );
   }
 
   hideSetup(): void {
@@ -238,11 +256,12 @@ export class Screens {
       this.resultsBody.appendChild(tr);
     });
 
-    this.resultsCredits.textContent = opts.twoPlayer
-      ? '友谊赛 · 不计积分'
-      : earnedCredits !== null
-        ? `奖励 +${earnedCredits} CR · 余额 ${creditBalance} CR`
-        : '';
+    this.resultsCredits.textContent =
+      (opts.twoPlayer
+        ? '友谊赛 · 不计积分'
+        : earnedCredits !== null
+          ? `奖励 +${earnedCredits} CR · 余额 ${creditBalance} CR`
+          : '') + (opts.damageText ?? '');
     this.results.classList.remove('hidden');
   }
 

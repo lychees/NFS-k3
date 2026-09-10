@@ -90,6 +90,7 @@ export class Recorder {
       if (c.state.nitroActive) f |= FLAG_NITRO;
       if (c.input.brake > 0) f |= FLAG_BRAKE;
       if (this.entries[i].parked()) f |= FLAG_PARKED;
+      f |= c.damageTier << 3; // 损伤档位（bit3-4）
       tr.flags[n] = f;
     });
     if (this.tracks.every((tr) => tr.n >= this.maxSamples)) this.recording = false;

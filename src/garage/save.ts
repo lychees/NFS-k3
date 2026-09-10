@@ -51,6 +51,8 @@ export interface SaveData {
     time: 'day' | 'sunset' | 'night';
     weather: 'clear' | 'rain';
   };
+  /** 车辆损伤开关（默认 ON） */
+  damageEnabled: boolean;
 }
 
 export const UPGRADE_MAX = 5;
@@ -127,6 +129,7 @@ export function defaultSave(): SaveData {
     lastMode: 'circuit',
     records: { circuit: null, sprint: null },
     lastConditions: { time: 'day', weather: 'clear' },
+    damageEnabled: true,
   };
 }
 
@@ -182,6 +185,7 @@ export function loadSave(): SaveData {
             : 'day',
         weather: data.lastConditions?.weather === 'rain' ? 'rain' : 'clear',
       },
+      damageEnabled: typeof data.damageEnabled === 'boolean' ? data.damageEnabled : true,
     };
   } catch {
     return base;

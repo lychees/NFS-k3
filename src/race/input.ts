@@ -4,7 +4,7 @@ const GAME_CODES = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyC', 'Escape', 'Enter',
   'ShiftLeft', 'ShiftRight', 'KeyN', 'KeyG', 'KeyM', 'Digit1', 'Digit2', 'Digit3', 'Digit4',
-  'Digit5', 'Slash', 'Period', 'ControlRight', 'Tab', 'KeyR',
+  'Digit5', 'Digit6', 'Slash', 'Period', 'ControlRight', 'Tab', 'KeyR',
 ]);
 
 /** 键盘状态采集 + 按键事件分发 */

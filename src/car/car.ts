@@ -16,6 +16,15 @@ import { headingFromTangent, type Track } from '../track/track';
 import type { AppearanceConfig, LiveryConfig } from '../garage/save';
 import { NitroFlame } from '../fx/nitroFlame';
 import type { Cockpit } from './cockpit';
+import {
+  DAMAGE_MAX,
+  damageAccelMult,
+  damageSteerMult,
+  damageTier,
+  damageTopSpeedMult,
+  impactDamage,
+  type DamageTier,
+} from './damage';
 
 export class Car {
   readonly name: string;
@@ -31,6 +40,15 @@ export class Car {
   speedMultiplier = 1;
   /** 雨天湿滑（由比赛设置统一置位） */
   wet = false;
+
+  /** 损伤值 0-100（街机化：100% 也不抛锚，只是性能打折） */
+  damage = 0;
+  /** 损伤开关（比赛设置 DAMAGE: ON/OFF） */
+  damageEnabled = true;
+
+  /** 损伤修正后的实际调校（预分配，每帧写入，不动物理核心） */
+  private effTuning: TuningParams;
+  private tier: DamageTier = 0;
 
   state: PhysicsState = {
     x: 0, z: 0, vx: 0, vz: 0, heading: 0, steer: 0,
@@ -61,6 +79,64 @@ export class Car {
     this.group.add(this.model.root);
     this.flames = this.model.exhausts.map((a) => new NitroFlame(a));
     this.state.nitroFuel = tuning.nitroCapacity;
+    this.effTuning = { ...tuning };
+  }
+
+  /** 累积损伤（冲击速度 -> 增量，由伤害映射纯函数计算） */
+  addImpactDamage(impactSpeed: number, scale = 1): void {
+    if (!this.damageEnabled) return;
+    this.damage = Math.min(DAMAGE_MAX, this.damage + impactDamage(impactSpeed) * scale);
+    this.syncTier();
+  }
+
+  /** 过线/检查点自修 */
+  repair(amount: number): void {
+    if (amount <= 0) return;
+    this.damage = Math.max(0, this.damage - amount);
+    this.syncTier();
+  }
+
+  resetDamage(): void {
+    this.damage = 0;
+    this.syncTier();
+  }
+
+  get damageTier(): DamageTier {
+    return this.tier;
+  }
+
+  /** 直接设置视觉档位（回放用，不改损伤值） */
+  setDamageTierVisuals(t: DamageTier): void {
+    if (t === this.tier) return;
+    this.tier = t;
+    this.applyDamageTier(t);
+  }
+
+  private syncTier(): void {
+    const t = damageTier(this.damage);
+    if (t !== this.tier) {
+      this.tier = t;
+      this.applyDamageTier(t);
+    }
+  }
+
+  /** 预建损伤组按档位切换：1 划痕+漆暗 / 2 尾翼歪+保险杠垂 / 3 车头压扁 */
+  private applyDamageTier(t: DamageTier): void {
+    const m = this.model;
+    m.damageScratches.visible = t >= 1;
+    if (t >= 1) {
+      m.paint.color.setHex(this.appearance.paint);
+      m.paint.color.multiplyScalar(0.72);
+    } else {
+      m.paint.color.setHex(this.appearance.paint);
+    }
+    m.spoilerGroup.rotation.z = t >= 2 ? 0.16 : 0;
+    m.spoilerGroup.position.y = t >= 2 ? -0.04 : 0;
+    m.rearBumper.rotation.x = t >= 2 ? 0.1 : 0;
+    m.rearBumper.position.y = t >= 2 ? 0.33 : 0.36;
+    m.frontBumper.rotation.x = t >= 2 ? -0.08 : 0;
+    m.nose.scale.z = t >= 3 ? 0.75 : 1;
+    m.frontBumper.scale.z = t >= 3 ? 0.85 : 1;
   }
 
   get color(): number {
@@ -148,11 +224,27 @@ export class Car {
     this.model = buildCarModel(appearance, livery);
     this.group.add(this.model.root);
     this.flames = this.model.exhausts.map((a) => new NitroFlame(a));
+    // 新模型的损伤组按当前档位重贴
+    const t = this.tier;
+    this.tier = 0;
+    this.setDamageTierVisuals(t);
   }
 
   setTuning(tuning: TuningParams): void {
     this.tuning = tuning;
     this.state.nitroFuel = Math.min(this.state.nitroFuel, tuning.nitroCapacity);
+  }
+
+  /** 损伤修正后的实际调校：极速 -25% / 加速 -30% / 转向 -20%（100% 封顶） */
+  private refreshEffTuning(): void {
+    const d = this.damageEnabled ? this.damage : 0;
+    this.effTuning.maxSpeed = this.tuning.maxSpeed * damageTopSpeedMult(d);
+    this.effTuning.engineAccel = this.tuning.engineAccel * damageAccelMult(d);
+    this.effTuning.steerSpeed = this.tuning.steerSpeed * damageSteerMult(d);
+    this.effTuning.lateralGrip = this.tuning.lateralGrip;
+    this.effTuning.handbrakeGrip = this.tuning.handbrakeGrip;
+    this.effTuning.nitroPower = this.tuning.nitroPower;
+    this.effTuning.nitroCapacity = this.tuning.nitroCapacity;
   }
 
   reset(track: Track, progressMeters: number, lateral: number): void {
@@ -177,6 +269,7 @@ export class Car {
     this.onRoad = true;
     this.input = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
     this.speedMultiplier = 1;
+    this.resetDamage();
     this.group.rotation.set(0, this.state.heading, 0);
     this.model.body.rotation.set(0, 0, 0);
   }
@@ -191,7 +284,8 @@ export class Car {
       : this.wet
         ? WET_GRASS_SURFACE
         : GRASS_SURFACE;
-    stepPhysics(st, this.input, dt, surface, this.tuning, this.speedMultiplier);
+    this.refreshEffTuning();
+    stepPhysics(st, this.input, dt, surface, this.effTuning, this.speedMultiplier);
 
     // 物理推进后同步渲染坐标，再做赛道边界约束
     this.pos.x = st.x;
@@ -211,6 +305,7 @@ export class Car {
       st.z = this.pos.z;
       const vOut = (st.vx * n.left.x + st.vz * n.left.z) * sign;
       this.wallImpact = Math.max(0, vOut);
+      if (this.wallImpact > 0) this.addImpactDamage(this.wallImpact);
       if (vOut > 0) {
         st.vx -= n.left.x * vOut * sign;
         st.vz -= n.left.z * vOut * sign;

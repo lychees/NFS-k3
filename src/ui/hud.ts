@@ -16,6 +16,11 @@ const TEMPLATE = `
       <div class="nitro-label">NITRO</div>
       <div class="nitro-bar"><div class="nitro-fill"></div></div>
     </div>
+    <div class="hud-damage">
+      <div class="damage-label">DAMAGE</div>
+      <div class="damage-bar"><div class="damage-fill"></div></div>
+      <div class="damage-critical hidden">CRITICAL!</div>
+    </div>
     <div class="hud-speed">0</div>
     <div class="hud-speed-unit">km/h</div>
   </div>
@@ -49,6 +54,9 @@ export interface HudData {
   wrongWay: boolean;
   /** 氮气余量 0..1 */
   nitroRatio: number;
+  /** 损伤 0..1 与视觉档位 0-3 */
+  damageRatio: number;
+  damageTier: number;
 }
 
 /** DOM 覆盖层 HUD（可实例化多份：单人全屏 / 双人上下半屏各一份） */
@@ -68,6 +76,8 @@ export class Hud {
   private banner: HTMLElement;
   private message: HTMLElement;
   private nitroFill: HTMLElement;
+  private damageFill: HTMLElement;
+  private damageCritical: HTMLElement;
 
   private lastSpeed = -1;
   private lastPos = '';
@@ -75,6 +85,7 @@ export class Hud {
   private lastCenter = '';
   private lastNitro = -1;
   private lastMode = '';
+  private lastDamage = -1;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -98,6 +109,8 @@ export class Hud {
     this.banner = q('hud-banner');
     this.message = q('hud-message');
     this.nitroFill = q('nitro-fill');
+    this.damageFill = q('damage-fill');
+    this.damageCritical = q('damage-critical');
   }
 
   show(): void {
@@ -189,6 +202,15 @@ export class Hud {
       this.lastNitro = nitroPct;
       this.nitroFill.style.width = `${nitroPct}%`;
       this.nitroFill.classList.toggle('low', nitroPct < 25);
+    }
+
+    const dmgPct = Math.round(d.damageRatio * 100);
+    if (dmgPct !== this.lastDamage) {
+      this.lastDamage = dmgPct;
+      this.damageFill.style.width = `${dmgPct}%`;
+      this.damageFill.classList.toggle('warn', d.damageTier === 2);
+      this.damageFill.classList.toggle('crit', d.damageTier >= 3);
+      this.damageCritical.classList.toggle('hidden', d.damageTier < 3);
     }
   }
 }
