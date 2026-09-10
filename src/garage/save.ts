@@ -46,6 +46,11 @@ export interface SaveData {
   lastMode: 'circuit' | 'sprint' | 'knockout' | 'hotpursuit';
   /** 各赛道最佳总用时（秒） */
   records: { circuit: number | null; sprint: number | null };
+  /** 上次比赛设置：时间 × 天气 */
+  lastConditions: {
+    time: 'day' | 'sunset' | 'night';
+    weather: 'clear' | 'rain';
+  };
 }
 
 export const UPGRADE_MAX = 5;
@@ -121,6 +126,7 @@ export function defaultSave(): SaveData {
     volume: 0.8,
     lastMode: 'circuit',
     records: { circuit: null, sprint: null },
+    lastConditions: { time: 'day', weather: 'clear' },
   };
 }
 
@@ -168,6 +174,13 @@ export function loadSave(): SaveData {
       records: {
         circuit: validRecord(data.records?.circuit),
         sprint: validRecord(data.records?.sprint),
+      },
+      lastConditions: {
+        time:
+          data.lastConditions?.time === 'sunset' || data.lastConditions?.time === 'night'
+            ? data.lastConditions.time
+            : 'day',
+        weather: data.lastConditions?.weather === 'rain' ? 'rain' : 'clear',
       },
     };
   } catch {

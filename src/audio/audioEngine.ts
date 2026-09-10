@@ -40,6 +40,7 @@ class AudioEngine {
   private skid: NoiseVoice | null = null;
   private grass: NoiseVoice | null = null;
   private siren: SirenNodes | null = null;
+  private rain: NoiseVoice | null = null;
   private noiseBuffer: AudioBuffer | null = null;
 
   private muted = false;
@@ -129,6 +130,12 @@ class AudioEngine {
   setSiren(level: number): void {
     if (!this.ctx || !this.siren) return;
     this.siren.gain.gain.setTargetAtTime(level * 0.12, this.ctx.currentTime, 0.15);
+  }
+
+  /** 雨声音量 0..1（雨天启用） */
+  setRain(level: number): void {
+    if (!this.ctx || !this.rain) return;
+    this.rain.gain.gain.setTargetAtTime(level, this.ctx.currentTime, 0.3);
   }
 
   playSfx(name: SfxName, intensity = 1): void {
@@ -249,6 +256,7 @@ class AudioEngine {
 
     this.skid = this.makeNoiseVoice('bandpass', 800, 1.2);
     this.grass = this.makeNoiseVoice('lowpass', 420, 0.8);
+    this.rain = this.makeNoiseVoice('bandpass', 1600, 0.4);
 
     // 警笛：方波载波 + 低频方波 LFO 扫频（双音交替 wail），常驻节点
     const sirenOsc = ctx.createOscillator();

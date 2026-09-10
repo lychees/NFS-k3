@@ -14,6 +14,8 @@ export interface CarModel {
   spinRR: THREE.Group;
   /** 尾灯材质（刹车时提亮） */
   brakeMaterial: THREE.MeshStandardMaterial;
+  /** 前大灯材质（夜晚发光增强） */
+  headMaterial: THREE.MeshStandardMaterial;
   /** 排气管尾焰锚点 */
   exhausts: THREE.Object3D[];
 }
@@ -305,6 +307,7 @@ export function buildCarModel(cfg: AppearanceConfig, livery: LiveryConfig): CarM
     spinRL: rl.spin,
     spinRR: rr.spin,
     brakeMaterial,
+    headMaterial: headMat,
     exhausts,
   };
 }

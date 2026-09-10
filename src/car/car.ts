@@ -4,6 +4,8 @@ import {
   GRASS_SURFACE,
   PHYS,
   ROAD_SURFACE,
+  WET_GRASS_SURFACE,
+  WET_ROAD_SURFACE,
   stepPhysics,
   type CarInput,
   type PhysicsState,
@@ -27,6 +29,8 @@ export class Car {
   input: CarInput = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
   /** AI 橡皮筋调速系数 */
   speedMultiplier = 1;
+  /** 雨天湿滑（由比赛设置统一置位） */
+  wet = false;
 
   state: PhysicsState = {
     x: 0, z: 0, vx: 0, vz: 0, heading: 0, steer: 0,
@@ -79,6 +83,11 @@ export class Car {
 
   get wheelSpinAngle(): number {
     return this.wheelSpin;
+  }
+
+  /** 前大灯材质（夜晚发光增强，换装后随新模型更新） */
+  get headMaterial(): THREE.MeshStandardMaterial {
+    return this.model.headMaterial;
   }
 
   /** 车身视觉俯仰/侧倾（驾驶舱相机用） */
@@ -175,7 +184,13 @@ export class Car {
   update(dt: number, track: Track): void {
     const st = this.state;
 
-    const surface = this.onRoad ? ROAD_SURFACE : GRASS_SURFACE;
+    const surface = this.onRoad
+      ? this.wet
+        ? WET_ROAD_SURFACE
+        : ROAD_SURFACE
+      : this.wet
+        ? WET_GRASS_SURFACE
+        : GRASS_SURFACE;
     stepPhysics(st, this.input, dt, surface, this.tuning, this.speedMultiplier);
 
     // 物理推进后同步渲染坐标，再做赛道边界约束

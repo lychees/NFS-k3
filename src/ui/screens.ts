@@ -9,6 +9,17 @@ function el<T extends HTMLElement>(id: string): T {
 
 const cssColor = (hex: number): string => `#${hex.toString(16).padStart(6, '0')}`;
 
+const TIME_OPTIONS = [
+  { id: 'day', name: '白天 DAY' },
+  { id: 'sunset', name: '黄昏 SUNSET' },
+  { id: 'night', name: '夜晚 NIGHT' },
+] as const;
+
+const WEATHER_OPTIONS = [
+  { id: 'clear', name: '晴 CLEAR' },
+  { id: 'rain', name: '雨 RAIN' },
+] as const;
+
 export interface ResultsOptions {
   mode: 'circuit' | 'sprint' | 'knockout' | 'hotpursuit';
   newRecord: boolean;
@@ -99,10 +110,66 @@ export class Screens {
     this.menu.classList.remove('hidden');
     this.pause.classList.add('hidden');
     this.results.classList.add('hidden');
+    el('screen-setup').classList.add('hidden');
   }
 
   hideMenu(): void {
     this.menu.classList.add('hidden');
+  }
+
+  // ---------- 比赛设置（时间 × 天气） ----------
+
+  showSetup(
+    modeName: string,
+    conditions: { time: string; weather: string },
+    cbs: {
+      onTime: (t: 'day' | 'sunset' | 'night') => void;
+      onWeather: (w: 'clear' | 'rain') => void;
+      onStart: () => void;
+    },
+  ): void {
+    this.menu.classList.add('hidden');
+    el('setup-mode-name').textContent = modeName;
+    const times = el('setup-times');
+    const weathers = el('setup-weathers');
+    if (times.childElementCount === 0) {
+      for (const t of TIME_OPTIONS) {
+        const b = document.createElement('button');
+        b.className = 'option';
+        b.dataset.time = t.id;
+        b.textContent = t.name;
+        b.addEventListener('click', () => cbs.onTime(t.id));
+        times.appendChild(b);
+      }
+      for (const w of WEATHER_OPTIONS) {
+        const b = document.createElement('button');
+        b.className = 'option';
+        b.dataset.weather = w.id;
+        b.textContent = w.name;
+        b.addEventListener('click', () => cbs.onWeather(w.id));
+        weathers.appendChild(b);
+      }
+      el('setup-start').addEventListener('click', cbs.onStart);
+    }
+    this.refreshSetup(conditions);
+    el('screen-setup').classList.remove('hidden');
+  }
+
+  refreshSetup(conditions: { time: string; weather: string }): void {
+    el('setup-times')
+      .querySelectorAll<HTMLElement>('[data-time]')
+      .forEach((b) => b.classList.toggle('selected', b.dataset.time === conditions.time));
+    el('setup-weathers')
+      .querySelectorAll<HTMLElement>('[data-weather]')
+      .forEach((b) => b.classList.toggle('selected', b.dataset.weather === conditions.weather));
+  }
+
+  hideSetup(): void {
+    el('screen-setup').classList.add('hidden');
+  }
+
+  get inSetup(): boolean {
+    return !el('screen-setup').classList.contains('hidden');
   }
 
   showPause(visible: boolean): void {

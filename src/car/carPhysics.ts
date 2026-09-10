@@ -59,14 +59,33 @@ export interface Surface {
   gripScale: number;
   dragExtra: number;
   speedCap: number;
+  /** 刹车力度系数（雨天 < 1，刹车距离变长） */
+  brakeScale: number;
 }
 
-export const ROAD_SURFACE: Surface = { gripScale: 1, dragExtra: 0, speedCap: Infinity };
+export const ROAD_SURFACE: Surface = { gripScale: 1, dragExtra: 0, speedCap: Infinity, brakeScale: 1 };
 
 export const GRASS_SURFACE: Surface = {
   gripScale: PHYS.grassGripScale,
   dragExtra: PHYS.grassDrag,
   speedCap: PHYS.grassSpeedCap,
+  brakeScale: 1,
+};
+
+/** 雨天湿滑修正：抓地 ×0.75 更易侧滑、刹车 ×0.72、阻力略增 */
+export const WET_GRIP_SCALE = 0.75;
+export const WET_BRAKE_SCALE = 0.72;
+export const WET_ROAD_SURFACE: Surface = {
+  gripScale: WET_GRIP_SCALE,
+  dragExtra: 0.25,
+  speedCap: Infinity,
+  brakeScale: WET_BRAKE_SCALE,
+};
+export const WET_GRASS_SURFACE: Surface = {
+  gripScale: PHYS.grassGripScale * WET_GRIP_SCALE,
+  dragExtra: PHYS.grassDrag + 0.25,
+  speedCap: PHYS.grassSpeedCap,
+  brakeScale: WET_BRAKE_SCALE,
 };
 
 export interface PhysicsState {
@@ -120,9 +139,9 @@ export function stepPhysics(
     s.nitroFuel = Math.max(0, s.nitroFuel - NITRO_DRAIN * dt);
   }
   s.nitroActive = nitroOn;
-  // 刹车 / 倒车
+  // 刹车 / 倒车（雨天 brakeScale < 1，刹车距离变长）
   if (input.brake > 0) {
-    if (vF > 0.5) vF = Math.max(0, vF - PHYS.brakeDecel * input.brake * dt);
+    if (vF > 0.5) vF = Math.max(0, vF - PHYS.brakeDecel * surface.brakeScale * input.brake * dt);
     else vF = Math.max(-PHYS.maxReverse, vF - PHYS.reverseAccel * input.brake * dt);
   }
   // 阻力

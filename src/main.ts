@@ -29,6 +29,15 @@ import { GaragePreview } from './garage/garagePreview';
 import { SmokePool } from './fx/smoke';
 import { SpeedLines } from './fx/speedLines';
 import { PostFX } from './fx/postfx';
+import {
+  RainFX,
+  applyEnvironment,
+  makeHeadlightBlob,
+  makeHeadlightBlobMaterial,
+  rainVolume,
+  resolveEnv,
+  type EnvRefs,
+} from './fx/weather';
 import { audio } from './audio/audioEngine';
 import {
   grassIntensity,
@@ -106,10 +115,14 @@ interface TrackBundle {
   track: Track;
   group: THREE.Group;
   startLine: THREE.Vector3;
+  roadMat: THREE.MeshStandardMaterial;
+  glowMats: { mat: THREE.MeshStandardMaterial; base: number }[];
 }
 
 const maxAniso = renderer.capabilities.getMaxAnisotropy();
-scene.add(createSky());
+const skyMesh = createSky();
+scene.add(skyMesh);
+const skyMat = skyMesh.material as THREE.ShaderMaterial;
 
 function buildTrackBundle(id: TrackId): TrackBundle {
   const def = TRACK_DEFS[id];
@@ -117,14 +130,31 @@ function buildTrackBundle(id: TrackId): TrackBundle {
   const group = new THREE.Group();
   const terrain = createTerrain(track);
   group.add(terrain.mesh);
-  group.add(buildRoad(track, maxAniso));
+  const road = buildRoad(track, maxAniso);
+  group.add(road);
   group.add(buildCurbs(track));
   group.add(buildGuardrails(track));
   group.add(buildGantry(track, 0, "RETRO RUSH '95", false));
   if (!def.closed) group.add(buildGantry(track, 1, 'FINISH', true));
   group.add(createVegetation(terrain, def.vegetation));
   scene.add(group);
-  return { id, track, group, startLine: track.sampleAt(0).pos };
+
+  // 环境可调材质登记（发光体：拱门霓虹/横幅，emissiveIntensity > 1.4）
+  const glowMats: { mat: THREE.MeshStandardMaterial; base: number }[] = [];
+  group.traverse((o) => {
+    if (o instanceof THREE.Mesh && !Array.isArray(o.material)) {
+      const m = o.material as THREE.MeshStandardMaterial;
+      if (m.emissiveIntensity > 1.4) glowMats.push({ mat: m, base: m.emissiveIntensity });
+    }
+  });
+  return {
+    id,
+    track,
+    group,
+    startLine: track.sampleAt(0).pos,
+    roadMat: road.material as THREE.MeshStandardMaterial,
+    glowMats,
+  };
 }
 
 const bundles: Record<TrackId, TrackBundle> = {
@@ -194,6 +224,45 @@ const chaseCam = new ChaseCamera();
 const chaseCamP2 = new ChaseCamera();
 const pursuit = new PursuitManager(scene);
 const heatOverlay = document.getElementById('heat-overlay')!;
+
+// ---------- 天气 / 昼夜 ----------
+
+const rainFX = new RainFX(scene);
+const headlightBlobMat = makeHeadlightBlobMaterial();
+for (const c of [...allCars, ...pursuit.cars]) {
+  c.group.add(makeHeadlightBlob(headlightBlobMat));
+}
+
+const envRefs: EnvRefs = {
+  sun,
+  sunDir,
+  hemi,
+  fog: scene.fog as THREE.Fog,
+  skyMat,
+  renderer,
+  roadMats: (Object.values(bundles) as { roadMat: THREE.MeshStandardMaterial }[]).map((b) => ({
+    mat: b.roadMat,
+    baseRoughness: 0.95,
+  })),
+  glowMats: [
+    ...bundles.circuit.glowMats,
+    ...bundles.sprint.glowMats,
+  ],
+  headlightMats: [],
+  headlightBlobMat,
+};
+
+/** 应用当前存档的时间 × 天气（光照/雾/雨粒子/湿滑） */
+function applyConditions(): void {
+  const preset = resolveEnv(save.lastConditions);
+  envRefs.headlightMats = [...allCars, ...pursuit.cars].map((c) => c.headMaterial);
+  applyEnvironment(preset, envRefs);
+  rainFX.setEnabled(preset.rain);
+  audio.setRain(rainVolume(preset.rain));
+  for (const c of [...allCars, ...pursuit.cars]) c.wet = preset.rain;
+}
+
+applyConditions();
 
 // ---------- 回放 ----------
 
@@ -418,6 +487,7 @@ let duelAnnounced = false;
 
 function startRace(nextMode: GameMode, twoPlayer: boolean): void {
   if (nextMode !== mode) applyMode(nextMode);
+  applyConditions();
   if (!twoPlayer) {
     save.lastMode = mode;
     persistSave(save);
@@ -500,43 +570,11 @@ race.startRace(bundle.track, { participants: field.map((f) => f.car), humans: [0
 race.toMenu();
 screens.showMenu();
 
-screens.onMenuRace(() => {
-  if (race.state === 'menu' && !inGarage) {
-    audio.playSfx('uiConfirm');
-    startRace('circuit', false);
-  }
-});
-screens.onMenuSprint(() => {
-  if (race.state === 'menu' && !inGarage) {
-    audio.playSfx('uiConfirm');
-    startRace('sprint', false);
-  }
-});
-screens.onMenuKnockout(() => {
-  if (race.state === 'menu' && !inGarage) {
-    audio.playSfx('uiConfirm');
-    startRace('knockout', false);
-  }
-});
-screens.onMenuHotPursuit(() => {
-  if (race.state === 'menu' && !inGarage) {
-    audio.playSfx('uiConfirm');
-    startRace('hotpursuit', false);
-  }
-});
 screens.onMenu2P(() => {
   if (race.state === 'menu' && !inGarage) {
     audio.playSfx('uiSelect');
     screens.show2PSub(true);
   }
-});
-screens.onMenu2PCircuit(() => {
-  audio.playSfx('uiConfirm');
-  startRace('circuit', true);
-});
-screens.onMenu2PSprint(() => {
-  audio.playSfx('uiConfirm');
-  startRace('sprint', true);
 });
 screens.onMenu2PBack(() => {
   audio.playSfx('uiSelect');
@@ -548,10 +586,68 @@ screens.onMenuGarage(() => {
 });
 screens.onReplay(() => startReplay());
 
+// ---------- 比赛设置（时间 × 天气） ----------
+
+const SETUP_NAMES: Record<GameMode, string> = {
+  circuit: '环形赛道 CIRCUIT',
+  sprint: '点对点 SPRINT',
+  knockout: '淘汰赛 KNOCKOUT',
+  hotpursuit: '警察追逐 HOT PURSUIT',
+};
+
+let setupMode: GameMode = 'circuit';
+let setup2P = false;
+
+function openSetup(m: GameMode, twoPlayer: boolean): void {
+  setupMode = m;
+  setup2P = twoPlayer;
+  screens.showSetup(SETUP_NAMES[m], save.lastConditions, {
+    onTime: (t) => {
+      save.lastConditions.time = t;
+      persistSave(save);
+      screens.refreshSetup(save.lastConditions);
+      audio.playSfx('uiSelect');
+    },
+    onWeather: (w) => {
+      save.lastConditions.weather = w;
+      persistSave(save);
+      screens.refreshSetup(save.lastConditions);
+      audio.playSfx('uiSelect');
+    },
+    onStart: () => startFromSetup(),
+  });
+  audio.playSfx('uiSelect');
+}
+
+function startFromSetup(): void {
+  screens.hideSetup();
+  audio.playSfx('uiConfirm');
+  startRace(setupMode, setup2P);
+}
+
+screens.onMenuRace(() => {
+  if (race.state === 'menu' && !inGarage) openSetup('circuit', false);
+});
+screens.onMenuSprint(() => {
+  if (race.state === 'menu' && !inGarage) openSetup('sprint', false);
+});
+screens.onMenuKnockout(() => {
+  if (race.state === 'menu' && !inGarage) openSetup('knockout', false);
+});
+screens.onMenuHotPursuit(() => {
+  if (race.state === 'menu' && !inGarage) openSetup('hotpursuit', false);
+});
+screens.onMenu2PCircuit(() => openSetup('circuit', true));
+screens.onMenu2PSprint(() => openSetup('sprint', true));
+
 input.onPress('Enter', () => {
   if (inGarage || replaying) return;
+  if (screens.inSetup) {
+    startFromSetup();
+    return;
+  }
   if (screens.in2PSub) return;
-  if (race.state === 'menu') startRace(save.lastMode, false);
+  if (race.state === 'menu') openSetup(save.lastMode, false);
   else if (race.state === 'finished') startRace(mode, splitMode);
   else if (race.state === 'paused') {
     race.resume();
@@ -595,6 +691,11 @@ input.onPress('Escape', () => {
     closeGarage();
     return;
   }
+  if (screens.inSetup) {
+    screens.hideSetup();
+    screens.showMenu();
+    return;
+  }
   if (screens.in2PSub) {
     screens.show2PSub(false);
     return;
@@ -627,9 +728,16 @@ input.onPress('Digit1', () => {
     replayPlayer?.setSpeed(0.5);
     return;
   }
+  if (screens.inSetup) {
+    save.lastConditions.time = 'day';
+    persistSave(save);
+    screens.refreshSetup(save.lastConditions);
+    audio.playSfx('uiSelect');
+    return;
+  }
   if (race.state === 'menu' && !inGarage) {
-    if (screens.in2PSub) startRace('circuit', true);
-    else startRace('circuit', false);
+    if (screens.in2PSub) openSetup('circuit', true);
+    else openSetup('circuit', false);
   }
 });
 input.onPress('Digit2', () => {
@@ -637,9 +745,16 @@ input.onPress('Digit2', () => {
     replayPlayer?.setSpeed(1);
     return;
   }
+  if (screens.inSetup) {
+    save.lastConditions.time = 'sunset';
+    persistSave(save);
+    screens.refreshSetup(save.lastConditions);
+    audio.playSfx('uiSelect');
+    return;
+  }
   if (race.state === 'menu' && !inGarage) {
-    if (screens.in2PSub) startRace('sprint', true);
-    else startRace('sprint', false);
+    if (screens.in2PSub) openSetup('sprint', true);
+    else openSetup('sprint', false);
   }
 });
 input.onPress('Digit3', () => {
@@ -647,12 +762,33 @@ input.onPress('Digit3', () => {
     replayPlayer?.setSpeed(2);
     return;
   }
-  if (race.state === 'menu' && !inGarage && !screens.in2PSub) startRace('knockout', false);
+  if (screens.inSetup) {
+    save.lastConditions.time = 'night';
+    persistSave(save);
+    screens.refreshSetup(save.lastConditions);
+    audio.playSfx('uiSelect');
+    return;
+  }
+  if (race.state === 'menu' && !inGarage && !screens.in2PSub) openSetup('knockout', false);
 });
 input.onPress('Digit4', () => {
-  if (race.state === 'menu' && !inGarage && !screens.in2PSub) startRace('hotpursuit', false);
+  if (screens.inSetup) {
+    save.lastConditions.weather = 'clear';
+    persistSave(save);
+    screens.refreshSetup(save.lastConditions);
+    audio.playSfx('uiSelect');
+    return;
+  }
+  if (race.state === 'menu' && !inGarage && !screens.in2PSub) openSetup('hotpursuit', false);
 });
 input.onPress('Digit5', () => {
+  if (screens.inSetup) {
+    save.lastConditions.weather = 'rain';
+    persistSave(save);
+    screens.refreshSetup(save.lastConditions);
+    audio.playSfx('uiSelect');
+    return;
+  }
   if (race.state === 'menu' && !inGarage) screens.show2PSub(!screens.in2PSub);
 });
 
@@ -1081,6 +1217,9 @@ function animate(): void {
   minimap.update(dots);
 
   smoke.update(dt);
+
+  // 雨粒子跟随 P1 相机（双人两视口共享同一场雨）
+  rainFX.update(dt, camera.position);
 
   // 阴影框跟随 P1
   sun.position.set(player.pos.x + sunDir.x * 220, player.pos.y + sunDir.y * 220, player.pos.z + sunDir.z * 220);

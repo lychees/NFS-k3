@@ -811,3 +811,22 @@ body {
   color: #8a93a8;
   letter-spacing: 2px;
 }
+
+/* ---------- 比赛设置界面 ---------- */
+
+#screen-setup .menu-inner {
+  min-width: 480px;
+}
+
+.setup-section {
+  margin: 22px 0 8px;
+  text-align: left;
+}
+
+.setup-row {
+  justify-content: center;
+}
+
+#setup-start {
+  margin-top: 30px;
+}
