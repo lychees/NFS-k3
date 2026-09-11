@@ -43,6 +43,7 @@
           <div class="menu-item" id="menu-knockout">淘汰赛 KNOCKOUT</div>
           <div class="menu-item" id="menu-hotpursuit">警察追逐 HOT PURSUIT</div>
           <div class="menu-item" id="menu-2p">双人 2 PLAYERS</div>
+          <div class="menu-item" id="menu-editor">赛道编辑 TRACK EDITOR</div>
           <div class="menu-item" id="menu-garage">车 库 GARAGE</div>
         </div>
         <div class="menu-actions hidden" id="menu-2p-sub">
@@ -71,6 +72,10 @@
         <div class="menu-subtitle">RACE SETUP</div>
         <h1 class="menu-title small" id="setup-mode-name">CIRCUIT</h1>
         <div class="setup-section">
+          <div class="garage-label">赛道 TRACK</div>
+          <div class="garage-row setup-row" id="setup-tracks"></div>
+        </div>
+        <div class="setup-section">
           <div class="garage-label">时间 TIME</div>
           <div class="garage-row setup-row" id="setup-times"></div>
         </div>
@@ -84,6 +89,59 @@
         </div>
         <div class="menu-item blink" id="setup-start">开 赛</div>
         <div class="menu-hint">1/2/3 时间 · 4/5 天气 · 6 损伤 · ENTER 开赛 · ESC 返回</div>
+      </div>
+    </div>
+
+    <div id="screen-editor" class="screen hidden">
+      <div class="editor-layout">
+        <div class="editor-canvas-wrap">
+          <canvas id="editor-canvas"></canvas>
+        </div>
+        <div class="editor-panel">
+          <div class="menu-subtitle">TRACK EDITOR</div>
+          <div class="garage-section">
+            <div class="garage-label">名称 NAME</div>
+            <input id="editor-name" type="text" maxlength="24" />
+          </div>
+          <div class="garage-section">
+            <div class="garage-label">类型 TYPE</div>
+            <div class="garage-row">
+              <button class="option" id="editor-type-closed">闭合环道</button>
+              <button class="option" id="editor-type-open">开放冲刺</button>
+            </div>
+          </div>
+          <div class="garage-section">
+            <div class="garage-label">路宽 <span id="editor-width-val">7.0m</span></div>
+            <input id="editor-width" type="range" min="4" max="10" step="0.5" value="7" />
+            <div class="garage-label">丘陵 <span id="editor-hills-val">×1.0</span></div>
+            <input id="editor-hills" type="range" min="0" max="2" step="0.1" value="1" />
+            <div class="garage-label">植被 <span id="editor-veg-val">×1.0</span></div>
+            <input id="editor-veg" type="range" min="0" max="2" step="0.1" value="1" />
+          </div>
+          <div class="garage-section">
+            <div class="garage-label">选中点 SELECTED</div>
+            <div id="editor-sel-info" class="editor-sel">未选中点</div>
+          </div>
+          <div id="editor-issues" class="ok">✓ 校验通过</div>
+          <div class="garage-row editor-btns">
+            <button class="option" id="editor-new">新建</button>
+            <button class="option" id="editor-save">保存</button>
+            <button class="option" id="editor-test">试跑</button>
+            <button class="option" id="editor-close">返回</button>
+          </div>
+          <div class="garage-section">
+            <div class="garage-label">自定义赛道列表</div>
+            <div id="editor-track-list"></div>
+          </div>
+          <div class="garage-section">
+            <div class="garage-label">导入 / 导出 JSON</div>
+            <textarea id="editor-json" rows="4" placeholder="导出点这里生成，导入粘贴后点导入"></textarea>
+            <div class="garage-row">
+              <button class="option" id="editor-export">导出</button>
+              <button class="option" id="editor-import">导入</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 

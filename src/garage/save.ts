@@ -62,8 +62,12 @@ export interface SaveData {
   volume: number;
   /** 上次游玩的赛道模式 */
   lastMode: 'circuit' | 'sprint' | 'knockout' | 'hotpursuit';
-  /** 各赛道最佳总用时（秒） */
-  records: { circuit: number | null; sprint: number | null };
+  /** 各模式上次选用的赛道 id */
+  lastTracks: Partial<Record<'circuit' | 'sprint' | 'knockout' | 'hotpursuit', string>>;
+  /** 各赛道最佳总用时（按赛道 id，秒） */
+  records: Record<string, number>;
+  /** 编辑器自定义赛道 */
+  customTracks: import('../track/customTrack').CustomTrackData[];
   /** 上次比赛设置：时间 × 天气 */
   lastConditions: {
     time: 'day' | 'sunset' | 'night';
@@ -145,7 +149,9 @@ export function defaultSave(): SaveData {
     muted: false,
     volume: 0.8,
     lastMode: 'circuit',
-    records: { circuit: null, sprint: null },
+    lastTracks: {},
+    records: {},
+    customTracks: [],
     lastConditions: { time: 'day', weather: 'clear' },
     damageEnabled: true,
   };
@@ -193,10 +199,9 @@ export function loadSave(): SaveData {
         data.lastMode === 'hotpursuit'
           ? data.lastMode
           : 'circuit',
-      records: {
-        circuit: validRecord(data.records?.circuit),
-        sprint: validRecord(data.records?.sprint),
-      },
+      records: migrateRecords(data.records),
+      lastTracks: migrateLastTracks(data.lastTracks),
+      customTracks: migrateCustomTracks(data.customTracks),
       lastConditions: {
         time:
           data.lastConditions?.time === 'sunset' || data.lastConditions?.time === 'night'
@@ -273,3 +278,58 @@ const isVehicle = (v: unknown): v is AppearanceConfig['vehicle'] =>
 
 const validRecord = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+
+/** 纪录迁移：旧版 {circuit, sprint} 固定键 -> 按赛道 id 的稀疏表 */
+function migrateRecords(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (v && typeof v === 'object') {
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      const r = validRecord(val);
+      if (r !== null) out[k] = r;
+    }
+  }
+  return out;
+}
+
+const MODES = ['circuit', 'sprint', 'knockout', 'hotpursuit'] as const;
+
+function migrateLastTracks(v: unknown): SaveData['lastTracks'] {
+  const out: SaveData['lastTracks'] = {};
+  if (v && typeof v === 'object') {
+    for (const m of MODES) {
+      const t = (v as Record<string, unknown>)[m];
+      if (typeof t === 'string' && t.length > 0) out[m] = t;
+    }
+  }
+  return out;
+}
+
+function migrateCustomTracks(v: unknown): SaveData['customTracks'] {
+  if (!Array.isArray(v)) return [];
+  const out: SaveData['customTracks'] = [];
+  for (const t of v as Partial<SaveData['customTracks'][number]>[]) {
+    if (
+      t &&
+      typeof t.id === 'string' &&
+      typeof t.name === 'string' &&
+      typeof t.closed === 'boolean' &&
+      Array.isArray(t.points) &&
+      t.points.every((p) => Array.isArray(p) && p.length === 3 && p.every((x) => Number.isFinite(x))) &&
+      typeof t.halfWidth === 'number' &&
+      typeof t.hills === 'number' &&
+      typeof t.vegetation === 'number'
+    ) {
+      out.push({
+        id: t.id,
+        name: t.name,
+        closed: t.closed,
+        points: t.points.map((p) => [p[0], p[1], p[2]]),
+        halfWidth: t.halfWidth,
+        hills: t.hills,
+        vegetation: t.vegetation,
+        custom: true,
+      });
+    }
+  }
+  return out;
+}

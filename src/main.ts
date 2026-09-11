@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Track } from './track/track';
-import { TRACK_DEFS, type TrackId } from './track/trackData';
+import { TRACK_COMPAT, TRACK_DEFS, type TrackDef, type TrackId } from './track/trackData';
+import { toTrackDef } from './track/customTrack';
 import { buildCurbs, buildGantry, buildGuardrails, buildRoad } from './track/trackMesh';
 import { createSky, createTerrain, createVegetation } from './track/environment';
 import { Car } from './car/car';
@@ -30,6 +31,7 @@ import {
 import { getTemplate, preloadLibrary } from './car/glbCar';
 import { GarageScreen } from './garage/garageScreen';
 import { GaragePreview } from './garage/garagePreview';
+import { TrackEditor } from './ui/trackEditor';
 import { SmokePool } from './fx/smoke';
 import { SpeedLines } from './fx/speedLines';
 import { PostFX } from './fx/postfx';
@@ -49,7 +51,7 @@ import {
   skidIntensity,
   stepGearbox,
 } from './audio/engineModel';
-import { clamp } from './utils/math';
+import { clamp, formatRaceTime } from './utils/math';
 
 const cssColor = (hex: number): string => `#${hex.toString(16).padStart(6, '0')}`;
 
@@ -128,8 +130,7 @@ const skyMesh = createSky();
 scene.add(skyMesh);
 const skyMat = skyMesh.material as THREE.ShaderMaterial;
 
-function buildTrackBundle(id: TrackId): TrackBundle {
-  const def = TRACK_DEFS[id];
+function buildTrackBundle(def: TrackDef): TrackBundle {
   const track = new Track(def);
   const group = new THREE.Group();
   const terrain = createTerrain(track);
@@ -152,7 +153,7 @@ function buildTrackBundle(id: TrackId): TrackBundle {
     }
   });
   return {
-    id,
+    id: def.id,
     track,
     group,
     startLine: track.sampleAt(0).pos,
@@ -161,10 +162,36 @@ function buildTrackBundle(id: TrackId): TrackBundle {
   };
 }
 
-const bundles: Record<TrackId, TrackBundle> = {
-  circuit: buildTrackBundle('circuit'),
-  sprint: buildTrackBundle('sprint'),
-};
+/** 赛道 bundle 懒加载缓存：首次选用才构建（含自定义赛道） */
+const bundles = new Map<TrackId, TrackBundle>();
+
+function trackDefOf(id: TrackId): TrackDef | null {
+  if (TRACK_DEFS[id]) return TRACK_DEFS[id];
+  const custom = save.customTracks.find((t) => t.id === id);
+  return custom ? toTrackDef(custom) : null;
+}
+
+function getBundle(id: TrackId): TrackBundle {
+  let b = bundles.get(id);
+  if (!b) {
+    const def = trackDefOf(id);
+    if (!def) throw new Error(`unknown track: ${id}`);
+    b = buildTrackBundle(def);
+    bundles.set(id, b);
+    envRefs.roadMats.push({ mat: b.roadMat, baseRoughness: 0.95 });
+    envRefs.glowMats.push(...b.glowMats);
+    applyConditions(); // 新 bundle 同步当前环境参数
+  }
+  return b;
+}
+
+/** 自定义赛道被编辑/删除后失效其 bundle 缓存 */
+function invalidateBundle(id: TrackId): void {
+  const b = bundles.get(id);
+  if (!b) return;
+  scene.remove(b.group);
+  bundles.delete(id);
+}
 
 // ---------- 存档与车辆 ----------
 
@@ -264,14 +291,8 @@ const envRefs: EnvRefs = {
   fog: scene.fog as THREE.Fog,
   skyMat,
   renderer,
-  roadMats: (Object.values(bundles) as { roadMat: THREE.MeshStandardMaterial }[]).map((b) => ({
-    mat: b.roadMat,
-    baseRoughness: 0.95,
-  })),
-  glowMats: [
-    ...bundles.circuit.glowMats,
-    ...bundles.sprint.glowMats,
-  ],
+  roadMats: [],
+  glowMats: [],
   headlightMats: [],
   headlightBlobMat,
 };
@@ -343,11 +364,20 @@ function setGlobalHudMuted(m: boolean): void {
 /** 游戏模式：环道计圈 / 点对点 / 淘汰赛（环道）/ 警察追逐（冲刺道） */
 type GameMode = 'circuit' | 'sprint' | 'knockout' | 'hotpursuit';
 
-const bundleIdOf = (m: GameMode): TrackId =>
-  m === 'sprint' || m === 'hotpursuit' ? 'sprint' : 'circuit';
+/** 模式当前选用的赛道 id（存档记忆，非法时回退默认） */
+function trackIdOf(m: GameMode): TrackId {
+  const want = save.lastTracks[m];
+  const compat = TRACK_COMPAT[m];
+  if (want) {
+    const def = trackDefOf(want);
+    if (def && def.closed === compat.closed) return want;
+  }
+  return compat.defaultTrack;
+}
 
 let mode: GameMode = save.lastMode === 'knockout' || save.lastMode === 'hotpursuit' ? save.lastMode : save.lastMode === 'sprint' ? 'sprint' : 'circuit';
-let bundle = bundles[bundleIdOf(mode)];
+let trackId: TrackId = trackIdOf(mode);
+let bundle = getBundle(trackId);
 
 /** 双人对局标志（仅 circuit / sprint） */
 let splitMode = false;
@@ -382,15 +412,24 @@ function buildField(twoPlayer: boolean): FieldEntry[] {
 
 function applyMode(next: GameMode): void {
   mode = next;
-  bundle = bundles[bundleIdOf(mode)];
-  for (const id of Object.keys(bundles) as TrackId[]) {
-    bundles[id].group.visible = bundles[id] === bundle;
+  trackId = trackIdOf(mode);
+  bundle = getBundle(trackId);
+  for (const b of bundles.values()) {
+    b.group.visible = b === bundle;
   }
   minimap.loadTrack(bundle.track);
 }
 
+/** 菜单模式项的纪录标签（各模式当前选用赛道的纪录） */
+function recordLabels(): { circuit: number | null; sprint: number | null } {
+  return {
+    circuit: save.records[trackIdOf('circuit')] ?? null,
+    sprint: save.records[trackIdOf('sprint')] ?? null,
+  };
+}
+
 applyMode(mode);
-screens.updateRecords(save.records);
+screens.updateRecords(recordLabels());
 
 // ---------- 分屏切换 ----------
 
@@ -494,6 +533,49 @@ function openGarage(): void {
   garageScreen.open(save);
 }
 
+// ---------- 赛道编辑器 ----------
+
+let inEditor = false;
+let returnToEditor = false;
+
+const editor = new TrackEditor({
+  onTestDrive: (data) => {
+    // 试跑前入库（等同保存），然后以赛道类型直接开赛
+    save.customTracks = [...save.customTracks.filter((t) => t.id !== data.id), data];
+    persistSave(save);
+    invalidateBundle(data.id);
+    returnToEditor = true;
+    inEditor = false;
+    editor.close();
+    const m: GameMode = data.closed ? 'circuit' : 'sprint';
+    save.lastTracks[m] = data.id;
+    persistSave(save);
+    startRace(m, false);
+  },
+  onBack: () => {
+    inEditor = false;
+    editor.close();
+    applyMode(mode); // 编辑器可能改过当前赛道，刷新菜单背景
+    screens.showMenu();
+    audio.playSfx('uiSelect');
+  },
+  getCustomTracks: () => save.customTracks,
+  onSaveCustomTracks: (tracks) => {
+    save.customTracks = tracks;
+    persistSave(save);
+    // 编辑过的自定义赛道一律失效重建（懒加载下次使用时重建）
+    for (const t of tracks) invalidateBundle(t.id);
+  },
+});
+
+function openEditor(): void {
+  if (race.state !== 'menu' || inEditor) return;
+  inEditor = true;
+  screens.hideMenu();
+  editor.open();
+  audio.playSfx('uiConfirm');
+}
+
 // ---------- 流程控制 ----------
 
 let resultsShown = false;
@@ -516,8 +598,9 @@ function startRace(nextMode: GameMode, twoPlayer: boolean): void {
   for (const c of [...allCars, ...pursuit.cars]) c.damageEnabled = save.damageEnabled;
   if (!twoPlayer) {
     save.lastMode = mode;
-    persistSave(save);
   }
+  save.lastTracks[mode] = trackId;
+  persistSave(save);
   player.setTuning(makeTuning(save.upgrades));
   // 每局：AI/P2 重新随机外观与车型，并按已加载模板换装 GLB（未加载则保持程序化）
   player2.rebuildVisual(randomAppearance(PLAYER_VEHICLE_IDS), randomLivery(), getTemplate(player2.appearance.vehicle));
@@ -619,7 +702,12 @@ screens.onMenuGarage(() => {
   audio.playSfx('uiConfirm');
   openGarage();
 });
+screens.onMenuEditor(() => openEditor());
 screens.onReplay(() => startReplay());
+
+input.onPress('KeyT', () => {
+  if (race.state === 'menu' && !inGarage && !inEditor && !screens.inSetup) openEditor();
+});
 
 // ---------- 比赛设置（时间 × 天气） ----------
 
@@ -633,10 +721,36 @@ const SETUP_NAMES: Record<GameMode, string> = {
 let setupMode: GameMode = 'circuit';
 let setup2P = false;
 
+/** 设置界面赛道列表（按模式兼容性过滤，含自定义） */
+function setupTrackItems(m: GameMode): { id: string; label: string }[] {
+  const compat = TRACK_COMPAT[m];
+  const items: { id: string; label: string }[] = [];
+  const push = (def: TrackDef, custom: boolean): void => {
+    if (def.closed !== compat.closed) return;
+    const len = (new Track(def).length / 1000).toFixed(2);
+    const rec = save.records[def.id];
+    items.push({
+      id: def.id,
+      label: `${def.name}${custom ? ' [自定义]' : ''} · ${len}km${rec !== undefined ? ` · 最佳 ${formatRaceTime(rec)}` : ''}`,
+    });
+  };
+  for (const def of Object.values(TRACK_DEFS)) push(def, false);
+  for (const c of save.customTracks) push(toTrackDef(c), true);
+  return items;
+}
+
 function openSetup(m: GameMode, twoPlayer: boolean): void {
   setupMode = m;
   setup2P = twoPlayer;
-  screens.showSetup(SETUP_NAMES[m], save.lastConditions, save.damageEnabled, {
+  const selected = trackIdOf(m);
+  screens.showSetup(SETUP_NAMES[m], save.lastConditions, save.damageEnabled, setupTrackItems(m), selected, {
+    onTrack: (id) => {
+      save.lastTracks[m] = id;
+      persistSave(save);
+      applyMode(m); // 切换菜单背景到所选赛道
+      screens.refreshSetup(save.lastConditions, save.damageEnabled, id);
+      audio.playSfx('uiSelect');
+    },
     onTime: (t) => {
       save.lastConditions.time = t;
       persistSave(save);
@@ -682,15 +796,24 @@ screens.onMenu2PCircuit(() => openSetup('circuit', true));
 screens.onMenu2PSprint(() => openSetup('sprint', true));
 
 input.onPress('Enter', () => {
-  if (inGarage || replaying) return;
+  if (inGarage || replaying || inEditor) return;
   if (screens.inSetup) {
     startFromSetup();
     return;
   }
   if (screens.in2PSub) return;
   if (race.state === 'menu') openSetup(save.lastMode, false);
-  else if (race.state === 'finished') startRace(mode, splitMode);
-  else if (race.state === 'paused') {
+  else if (race.state === 'finished') {
+    if (returnToEditor) {
+      returnToEditor = false;
+      toMenu();
+      inEditor = true;
+      screens.hideMenu();
+      editor.open();
+    } else {
+      startRace(mode, splitMode);
+    }
+  } else if (race.state === 'paused') {
     race.resume();
     audio.resumeGame();
   }
@@ -737,11 +860,26 @@ input.onPress('Escape', () => {
     screens.showMenu();
     return;
   }
+  if (inEditor) {
+    inEditor = false;
+    editor.close();
+    applyMode(mode);
+    screens.showMenu();
+    return;
+  }
   if (screens.in2PSub) {
     screens.show2PSub(false);
     return;
   }
   if (race.state === 'finished') {
+    if (returnToEditor) {
+      returnToEditor = false;
+      toMenu();
+      inEditor = true;
+      screens.hideMenu();
+      editor.open();
+      return;
+    }
     toMenu();
     return;
   }
@@ -1004,7 +1142,7 @@ function hudDataFor(idx: number, state: typeof race.state): HudData {
     bestLapTime: st.bestLapTime,
     sprintPct: race.finishDist > 0 ? clamp((st.progress / race.finishDist) * 100, 0, 100) : 0,
     sprintKm: Math.max(0, st.progress) / 1000,
-    sprintRecord: save.records.sprint,
+    sprintRecord: save.records[trackId] ?? null,
     carsLeft: race.carsLeft,
     elimCountdown: race.elimTimer,
     countdownText: race.countdownText,
@@ -1024,6 +1162,9 @@ let menuTime = 0;
 function animate(): void {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
+
+  // 编辑器全屏 DOM 界面：跳过世界更新（编辑器有独立渲染循环）
+  if (inEditor) return;
 
   if (inGarage) {
     audio.setEngine(0.18, 0, { active: false, shifting: false, nitro: false });
@@ -1201,11 +1342,11 @@ function animate(): void {
         save.credits += earned;
         const finishTime = race.player.finishTime;
         if (!race.knockout && mode !== 'hotpursuit' && finishTime !== null) {
-          const prev = save.records[mode as 'circuit' | 'sprint'];
-          if (prev === null || finishTime < prev) {
-            save.records[mode as 'circuit' | 'sprint'] = finishTime;
+          const prev = save.records[trackId];
+          if (prev === undefined || finishTime < prev) {
+            save.records[trackId] = finishTime;
             newRecord = true;
-            screens.updateRecords(save.records);
+            screens.updateRecords(recordLabels());
           }
         }
         persistSave(save);

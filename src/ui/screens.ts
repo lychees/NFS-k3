@@ -89,6 +89,10 @@ export class Screens {
     el('menu-garage').addEventListener('click', cb);
   }
 
+  onMenuEditor(cb: () => void): void {
+    el('menu-editor').addEventListener('click', cb);
+  }
+
   onReplay(cb: () => void): void {
     el('results-replay').addEventListener('click', cb);
   }
@@ -119,13 +123,16 @@ export class Screens {
     this.menu.classList.add('hidden');
   }
 
-  // ---------- 比赛设置（时间 × 天气） ----------
+  // ---------- 比赛设置（赛道 × 时间 × 天气 × 损伤） ----------
 
   showSetup(
     modeName: string,
     conditions: { time: string; weather: string },
     damageEnabled: boolean,
+    tracks: { id: string; label: string }[],
+    selectedTrackId: string,
     cbs: {
+      onTrack: (id: string) => void;
       onTime: (t: 'day' | 'sunset' | 'night') => void;
       onWeather: (w: 'clear' | 'rain') => void;
       onDamage: (enabled: boolean) => void;
@@ -134,6 +141,20 @@ export class Screens {
   ): void {
     this.menu.classList.add('hidden');
     el('setup-mode-name').textContent = modeName;
+
+    // 赛道列表（每次重建：自定义赛道会变）
+    const trackWrap = el('setup-tracks');
+    trackWrap.innerHTML = '';
+    for (const t of tracks) {
+      const b = document.createElement('button');
+      b.className = 'option track-option';
+      b.dataset.track = t.id;
+      b.textContent = t.label;
+      b.classList.toggle('selected', t.id === selectedTrackId);
+      b.addEventListener('click', () => cbs.onTrack(t.id));
+      trackWrap.appendChild(b);
+    }
+
     const times = el('setup-times');
     const weathers = el('setup-weathers');
     const damage = el('setup-damage');
@@ -168,7 +189,16 @@ export class Screens {
     el('screen-setup').classList.remove('hidden');
   }
 
-  refreshSetup(conditions: { time: string; weather: string }, damageEnabled: boolean): void {
+  refreshSetup(
+    conditions: { time: string; weather: string },
+    damageEnabled: boolean,
+    selectedTrackId?: string,
+  ): void {
+    if (selectedTrackId !== undefined) {
+      el('setup-tracks')
+        .querySelectorAll<HTMLElement>('[data-track]')
+        .forEach((b) => b.classList.toggle('selected', b.dataset.track === selectedTrackId));
+    }
     el('setup-times')
       .querySelectorAll<HTMLElement>('[data-time]')
       .forEach((b) => b.classList.toggle('selected', b.dataset.time === conditions.time));

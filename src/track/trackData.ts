@@ -1,6 +1,7 @@
 /** 赛道定义（数据驱动）：新增赛道只需在此加一条 TrackDef */
 
-export type TrackId = 'circuit' | 'sprint';
+/** 赛道 id：内置固定键 + 自定义 'custom-*' */
+export type TrackId = string;
 
 export interface TrackDef {
   id: TrackId;
@@ -85,6 +86,56 @@ const SPRINT_POINTS: [number, number, number][] = [
   [770, 6, 790],
 ];
 
+// 海岸环道：宽阔流畅大弯，低落差，开阔视野
+const COAST_POINTS: [number, number, number][] = [
+  [0, 0, -260],
+  [180, 1, -240],
+  [320, 2, -150],
+  [380, 3, 0],
+  [340, 4, 150],
+  [200, 3, 240],
+  [20, 2, 280],
+  [-160, 2, 240],
+  [-280, 3, 130],
+  [-340, 2, -20],
+  [-300, 1, -170],
+  [-150, 0, -250],
+];
+
+// 沙漠冲刺道：长直道 + 连续 S 弯，中等落差
+const DESERT_POINTS: [number, number, number][] = [
+  [-680, 0, -620],
+  [-480, 1, -640],
+  [-280, 2, -600],
+  [-80, 4, -560],
+  [120, 6, -480],
+  [260, 9, -340],
+  [180, 12, -180],
+  [280, 14, -20],
+  [180, 16, 140],
+  [300, 18, 280],
+  [220, 20, 440],
+  [380, 22, 560],
+  [560, 20, 640],
+  [720, 16, 700],
+];
+
+// 山地技术环道：窄路大落差，连续回头弯
+const RIDGE_POINTS: [number, number, number][] = [
+  [0, 0, -180],
+  [120, 3, -160],
+  [180, 8, -60],
+  [120, 14, 30],
+  [190, 20, 110],
+  [90, 26, 170],
+  [-30, 30, 120],
+  [-130, 33, 170],
+  [-190, 28, 60],
+  [-110, 22, -30],
+  [-190, 16, -110],
+  [-90, 8, -190],
+];
+
 export const TRACK_DEFS: Record<TrackId, TrackDef> = {
   circuit: {
     id: 'circuit',
@@ -100,6 +151,34 @@ export const TRACK_DEFS: Record<TrackId, TrackDef> = {
     hills: 1,
     vegetation: 1,
   },
+  coast: {
+    id: 'coast',
+    name: '海岸环道',
+    closed: true,
+    points: COAST_POINTS,
+    halfWidth: 8,
+    runoffWidth: 5,
+    samples: 1000,
+    checkpoints: 12,
+    laps: 3,
+    startOffset: 0,
+    hills: 0.5,
+    vegetation: 0.5,
+  },
+  ridge: {
+    id: 'ridge',
+    name: '山地技术环道',
+    closed: true,
+    points: RIDGE_POINTS,
+    halfWidth: 5.5,
+    runoffWidth: 3.0,
+    samples: 1100,
+    checkpoints: 12,
+    laps: 3,
+    startOffset: 0,
+    hills: 2.0,
+    vegetation: 2.0,
+  },
   sprint: {
     id: 'sprint',
     name: '点对点山路',
@@ -114,6 +193,28 @@ export const TRACK_DEFS: Record<TrackId, TrackDef> = {
     hills: 1.7,
     vegetation: 1.5,
   },
+  desert: {
+    id: 'desert',
+    name: '沙漠冲刺道',
+    closed: false,
+    points: DESERT_POINTS,
+    halfWidth: 6.5,
+    runoffWidth: 4.0,
+    samples: 1400,
+    checkpoints: 10,
+    laps: 1,
+    startOffset: 17,
+    hills: 1.0,
+    vegetation: 0.7,
+  },
+};
+
+/** 各模式的赛道兼容性：环道类选 closed，冲刺/追逐选开放 */
+export const TRACK_COMPAT: Record<string, { closed: boolean; defaultTrack: TrackId }> = {
+  circuit: { closed: true, defaultTrack: 'circuit' },
+  knockout: { closed: true, defaultTrack: 'circuit' },
+  sprint: { closed: false, defaultTrack: 'sprint' },
+  hotpursuit: { closed: false, defaultTrack: 'sprint' },
 };
 
 /** 环道发车格（起点线后，负里程） */
