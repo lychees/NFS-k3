@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { LiveryConfig } from '../garage/save';
+import type { CarMetrics } from './carModel';
 
 /**
  * 涂装贴片（decal）：透明 CanvasTexture 平面略浮于车身表面。
@@ -52,17 +53,17 @@ function makeDecal(
 }
 
 /** 引擎盖贴片（canvas 顶边 = 车尾方向） */
-function hoodDecal(tex: THREE.Texture): THREE.Mesh {
-  return makeDecal(tex, 1.5, 2.0, [0, 0.665, 1.12], { x: -Math.PI / 2 + HOOD_TILT });
+function hoodDecal(tex: THREE.Texture, m: CarMetrics): THREE.Mesh {
+  return makeDecal(tex, 1.5, 2.0, [0, m.hoodY - 0.015, m.frontZ * 0.48], { x: -Math.PI / 2 + HOOD_TILT });
 }
 
 /** 车顶贴片 */
-function roofDecal(tex: THREE.Texture): THREE.Mesh {
-  return makeDecal(tex, 1.3, 1.0, [0, 1.206, -0.8], { x: -Math.PI / 2 + 0.02 });
+function roofDecal(tex: THREE.Texture, m: CarMetrics): THREE.Mesh {
+  return makeDecal(tex, 1.3, 1.0, [0, m.roofY + 0.006, m.rearZ * 0.34], { x: -Math.PI / 2 + 0.02 });
 }
 
 /** 车身侧面贴片；flip 用于有方向性的图案（火焰）在左侧镜像 */
-function sideDecal(tex: THREE.Texture, side: 1 | -1, flip = false): THREE.Mesh {
+function sideDecal(tex: THREE.Texture, side: 1 | -1, flip: boolean, m: CarMetrics): THREE.Mesh {
   let t = tex;
   if (flip) {
     t = tex.clone();
@@ -70,7 +71,7 @@ function sideDecal(tex: THREE.Texture, side: 1 | -1, flip = false): THREE.Mesh {
     t.offset.x = 1;
     t.needsUpdate = true;
   }
-  return makeDecal(t, 4.2, 0.5, [side * 0.883, 0.55, -0.05], { y: (side * Math.PI) / 2 });
+  return makeDecal(t, 4.2, 0.5, [side * (m.halfWidth + 0.003), m.roofY * 0.458, 0], { y: (side * Math.PI) / 2 });
 }
 
 // ---------- 各涂装纹理（canvas 顶边 = 车后，左边 = 车头对于侧面） ----------
@@ -279,44 +280,44 @@ function slashesHoodTex(accent: number): THREE.CanvasTexture {
 }
 
 /** 按涂装配置生成贴片组，挂载到车身 body 层 */
-export function buildLiveryDecals(cfg: LiveryConfig): THREE.Group {
+export function buildLiveryDecals(cfg: LiveryConfig, m: CarMetrics): THREE.Group {
   const g = new THREE.Group();
   switch (cfg.id) {
     case 'none':
       break;
     case 'stripes': {
       const tex = stripesTex(cfg.accent);
-      g.add(hoodDecal(tex), roofDecal(tex));
+      g.add(hoodDecal(tex, m), roofDecal(tex, m));
       break;
     }
     case 'roundel': {
-      g.add(hoodDecal(roundelHoodTex(cfg.accent)));
+      g.add(hoodDecal(roundelHoodTex(cfg.accent), m));
       const tex = roundelSideTex(cfg.accent, cfg.number);
-      g.add(sideDecal(tex, 1), sideDecal(tex, -1));
+      g.add(sideDecal(tex, 1, false, m), sideDecal(tex, -1, false, m));
       break;
     }
     case 'twotone': {
       const tex = solidTex(cfg.accent);
-      g.add(hoodDecal(tex), roofDecal(tex));
+      g.add(hoodDecal(tex, m), roofDecal(tex, m));
       const side = twoToneSideTex(cfg.accent);
-      g.add(sideDecal(side, 1), sideDecal(side, -1));
+      g.add(sideDecal(side, 1, false, m), sideDecal(side, -1, false, m));
       break;
     }
     case 'checkered': {
-      g.add(hoodDecal(checkerHoodTex(cfg.accent)));
-      g.add(roofDecal(checkerRoofTex(cfg.accent)));
+      g.add(hoodDecal(checkerHoodTex(cfg.accent), m));
+      g.add(roofDecal(checkerRoofTex(cfg.accent), m));
       break;
     }
     case 'flames': {
-      g.add(hoodDecal(flamesHoodTex(cfg.accent)));
+      g.add(hoodDecal(flamesHoodTex(cfg.accent), m));
       const tex = flamesSideTex(cfg.accent);
-      g.add(sideDecal(tex, 1), sideDecal(tex, -1, true));
+      g.add(sideDecal(tex, 1, false, m), sideDecal(tex, -1, true, m));
       break;
     }
     case 'slashes': {
-      g.add(hoodDecal(slashesHoodTex(cfg.accent)));
+      g.add(hoodDecal(slashesHoodTex(cfg.accent), m));
       const tex = slashesSideTex(cfg.accent);
-      g.add(sideDecal(tex, 1), sideDecal(tex, -1));
+      g.add(sideDecal(tex, 1, false, m), sideDecal(tex, -1, false, m));
       break;
     }
   }

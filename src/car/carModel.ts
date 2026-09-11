@@ -2,6 +2,17 @@ import * as THREE from 'three';
 import type { AppearanceConfig, LiveryConfig, RimStyle, SpoilerStyle } from '../garage/save';
 import { buildLiveryDecals } from './livery';
 
+/** 车身挂载度量（灯组/涂装/相机/损伤的定位依据；程序化模型为常量，GLB 由包围盒推算） */
+export interface CarMetrics {
+  halfWidth: number;
+  frontZ: number;
+  rearZ: number;
+  roofY: number;
+  hoodY: number;
+  tailY: number;
+  wheelR: number;
+}
+
 export interface CarModel {
   root: THREE.Group;
   /** 承载加速俯仰 / 过弯侧倾的车身内层 */
@@ -19,14 +30,26 @@ export interface CarModel {
   /** 排气管尾焰锚点 */
   exhausts: THREE.Object3D[];
   // 损伤系统引用件
-  paint: THREE.MeshPhysicalMaterial;
+  paint: THREE.MeshStandardMaterial;
   spoilerGroup: THREE.Group;
   nose: THREE.Mesh;
   frontBumper: THREE.Mesh;
   rearBumper: THREE.Mesh;
   /** 划痕贴花组（损伤 tier>=1 可见） */
   damageScratches: THREE.Group;
+  metrics: CarMetrics;
 }
+
+/** 程序化车身的固定度量 */
+export const PROCEDURAL_METRICS: CarMetrics = {
+  halfWidth: 0.88,
+  frontZ: 2.32,
+  rearZ: -2.34,
+  roofY: 1.2,
+  hoodY: 0.68,
+  tailY: 0.72,
+  wheelR: 0.34,
+};
 
 /** 侧面轮廓挤压出车身主体（shape X = 车头方向，挤出轴 = 车宽） */
 function extrudeProfile(profile: [number, number][], width: number): THREE.ExtrudeGeometry {
@@ -110,7 +133,7 @@ function makeWheel(style: RimStyle, side: number): { yaw: THREE.Group; spin: THR
 }
 
 /** 程序化划痕纹理：几道深色折线刮痕（损伤贴花用） */
-function makeScratchTexture(): THREE.CanvasTexture {
+export function makeScratchTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 128;
   canvas.height = 128;
@@ -164,7 +187,7 @@ function buildSpoiler(style: SpoilerStyle, paint: THREE.Material, dark: THREE.Ma
 }
 
 /** 底盘灯地面光斑：径向渐变 shader，无贴图 */
-function makeGlowBlob(color: number): THREE.Mesh {
+export function makeGlowBlob(color: number): THREE.Mesh {
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -341,7 +364,7 @@ export function buildCarModel(cfg: AppearanceConfig, livery: LiveryConfig): CarM
   }
 
   // 涂装拉花贴片（只贴车身，不影响玻璃/尾灯）
-  body.add(buildLiveryDecals(livery));
+  body.add(buildLiveryDecals(livery, PROCEDURAL_METRICS));
 
   body.traverse((o) => {
     if (o instanceof THREE.Mesh && o.renderOrder === 0) o.castShadow = true;
@@ -375,12 +398,19 @@ export function buildCarModel(cfg: AppearanceConfig, livery: LiveryConfig): CarM
     frontBumper,
     rearBumper,
     damageScratches,
+    metrics: PROCEDURAL_METRICS,
   };
 }
 
 export function disposeCarModel(model: CarModel): void {
   model.root.traverse((o) => {
     if (o instanceof THREE.Mesh) {
+      // GLB 库共享资源不释放（几何/贴图为模板缓存）
+      if (o.userData.fromLibrary) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) if (m.userData.cloned) m.dispose();
+        return;
+      }
       o.geometry.dispose();
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       for (const m of mats) {

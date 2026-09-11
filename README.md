@@ -30,7 +30,8 @@
 
 开始菜单进入（点击 或 按 G），左侧 3D 旋转预览，右侧改装：
 
-- **外观**：8 种车漆、3 种尾翼（无/低尾翼/GT 大尾翼）、3 种轮毂（五辐/网状/大饼）、6 种霓虹底盘灯（含关闭）
+- **车型**：4 款 Kenney Car Kit（CC0）GLB 真实车模 —— RACE / FUTURE / SEDAN-S / HATCH-S（加载失败自动回退程序化车模；AI 使用 sedan/suv/taxi，警车为 police.glb）
+- **外观**：8 种车漆（作用于车身主材质）、3 种尾翼、3 种轮毂、6 种霓虹底盘灯（含关闭）——尾翼/轮毂选项仅程序化车模生效，GLB 车型为自带外观
 - **涂装（LIVERY）**：7 种程序化生成的拉花预设 —— 无涂装 / 双条纹 / 号码圆标 / 双色拼漆 / 格子旗 / 烈焰 / 斜纹；每种可配独立**强调色**（6 色），号码圆标可显示自填**赛车号码（0–99）**。涂装以透明贴片（decal）叠加在主漆之上，不影响玻璃与尾灯
 - **性能**（0-5 级，积分购买，逐级 60/90/120/150/180 CR）：
   - 引擎：极速 61→72 m/s，加速 16→24 m/s²
@@ -70,7 +71,8 @@
 
 ## 技术栈
 
-- Vite 5 + TypeScript（strict）+ Three.js（含 addons 的 UnrealBloomPass 泛光后处理）
+- Vite 5 + TypeScript（strict）+ Three.js（含 addons 的 UnrealBloomPass 泛光后处理与 GLTFLoader）
+- 车辆模型：Kenney Car Kit（CC0，https://kenney.nl/assets/car-kit）GLB 车模 + 程序化兜底车模；GLB 经统一归一化（缩放至 4.4m 车长、居中贴地、车头 +Z）接入既有车漆/涂装/损伤/灯光系统
 - 无物理引擎：`src/car/carPhysics.ts` 自实现街机车辆模型（纵/侧向速度分解 + 抓地力指数衰减），物理参数按改装配置实例化（`makeTuning`）
 - 无外部素材：车辆由挤压轮廓 + BoxGeometry 拼装，涂装/贴图/粒子纹理全部 Canvas 或 shader 程序生成
 - 无音频素材：`src/audio/` 全部用 Web Audio API 程序合成（转速/档位/包络为纯函数 `engineModel.ts`）
@@ -93,7 +95,7 @@ npm run preview  # 预览构建产物
 ## 代码结构
 
 - `src/track/` — 赛道路线（样条）、路面/地形/天空/植被的程序化生成
-- `src/car/` — 车辆模型拼装、涂装贴片（`livery.ts`）、街机物理（调校参数）、Car 实体
+- `src/car/` — 车辆模型拼装、GLB 车模接入（`glbCar.ts` 归一化/适配层）、涂装贴片（`livery.ts`）、街机物理（调校参数）、Car 实体
 - `src/ai/` — AI 对手（赛车线预瞄 + 橡皮筋）
 - `src/race/` — 输入、比赛流程（倒计时/圈数/名次）、追逐相机
 - `src/garage/` — 存档（localStorage）、车库 DOM 界面、3D 预览场景
@@ -102,3 +104,7 @@ npm run preview  # 预览构建产物
 - `src/audio/` — Web Audio 声音引擎（引擎/胎响/氮气/碰撞/蜂鸣/UI 音）
 - `src/ui/` — HUD（含氮气条）、Canvas 小地图、菜单/暂停/结算界面
 - `src/main.ts` — 启动与主循环
+
+## 致谢
+
+- 车辆 3D 模型：[Kenney Car Kit](https://kenney.nl/assets/car-kit)（CC0 许可，许可文本见 `src/assets/models/License.txt`）

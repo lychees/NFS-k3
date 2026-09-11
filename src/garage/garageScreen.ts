@@ -2,6 +2,7 @@ import {
   ACCENTS,
   LIVERIES,
   PAINTS,
+  PLAYER_VEHICLES,
   RIM_STYLES,
   SPOILER_STYLES,
   UNDERGLOWS,
@@ -70,6 +71,9 @@ export class GarageScreen {
   refresh(save: SaveData): void {
     this.save = save;
     this.credits.textContent = `CR ${save.credits}`;
+    this.root.querySelectorAll<HTMLElement>('[data-vehicle]').forEach((b) => {
+      b.classList.toggle('selected', b.dataset.vehicle === save.appearance.vehicle);
+    });
     this.root.querySelectorAll<HTMLElement>('[data-paint]').forEach((b) => {
       b.classList.toggle('selected', Number(b.dataset.paint) === save.appearance.paint);
     });
@@ -114,6 +118,16 @@ export class GarageScreen {
   }
 
   private buildAppearanceRows(): void {
+    const vehicles = el('garage-vehicles');
+    for (const v of PLAYER_VEHICLES) {
+      const b = document.createElement('button');
+      b.className = 'option';
+      b.dataset.vehicle = v.id;
+      b.textContent = v.name;
+      b.addEventListener('click', () => this.cbs.onAppearance({ vehicle: v.id }));
+      vehicles.appendChild(b);
+    }
+
     const paints = el('garage-paints');
     for (const p of PAINTS) {
       const b = document.createElement('button');

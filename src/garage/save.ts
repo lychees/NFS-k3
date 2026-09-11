@@ -2,6 +2,22 @@
 
 export type RimStyle = 'sport' | 'mesh' | 'dish';
 export type SpoilerStyle = 'none' | 'low' | 'gt';
+
+/** 玩家可选 GLB 车型（Kenney Car Kit） */
+export const PLAYER_VEHICLES = [
+  { id: 'race', name: 'RACE' },
+  { id: 'race-future', name: 'FUTURE' },
+  { id: 'sedan-sports', name: 'SEDAN-S' },
+  { id: 'hatchback-sports', name: 'HATCH-S' },
+] as const;
+export type PlayerVehicleId = (typeof PLAYER_VEHICLES)[number]['id'];
+
+export const PLAYER_VEHICLE_IDS: readonly PlayerVehicleId[] = PLAYER_VEHICLES.map((v) => v.id);
+
+/** AI 车型池 */
+export const AI_VEHICLES = ['sedan', 'suv', 'taxi'] as const;
+export type AiVehicleId = (typeof AI_VEHICLES)[number];
+export type VehicleId = PlayerVehicleId | AiVehicleId | 'police';
 export type LiveryId =
   | 'none'
   | 'stripes'
@@ -25,6 +41,8 @@ export interface AppearanceConfig {
   rims: RimStyle;
   /** null = 关闭底盘灯 */
   underglow: number | null;
+  /** GLB 车型（加载失败时回退程序化车模；police 仅警车内部使用） */
+  vehicle: VehicleId;
 }
 
 export interface UpgradeLevels {
@@ -121,7 +139,7 @@ export function defaultSave(): SaveData {
   return {
     credits: 0,
     upgrades: { engine: 0, tires: 0, nitro: 0 },
-    appearance: { paint: PAINTS[0].color, spoiler: 'low', rims: 'sport', underglow: 0x18e0ff },
+    appearance: { paint: PAINTS[0].color, spoiler: 'low', rims: 'sport', underglow: 0x18e0ff, vehicle: 'race' },
     livery: { id: 'stripes', accent: 0xf2f2f2, number: 7 },
     bloom: true,
     muted: false,
@@ -154,6 +172,7 @@ export function loadSave(): SaveData {
           data.appearance?.underglow === null || typeof data.appearance?.underglow === 'number'
             ? data.appearance.underglow
             : base.appearance.underglow,
+        vehicle: isVehicle(data.appearance?.vehicle) ? data.appearance.vehicle : base.appearance.vehicle,
       },
       livery: {
         id: isLivery(data.livery?.id) ? data.livery.id : base.livery.id,
@@ -212,14 +231,17 @@ export function tryBuy(save: SaveData, key: keyof UpgradeLevels): boolean {
   return true;
 }
 
-/** AI 车辆随机外观方案 */
-export function randomAppearance(): AppearanceConfig {
-  const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+/** AI 车辆随机外观方案（vehiclePool 指定车型池） */
+export function randomAppearance(
+  vehiclePool: readonly (PlayerVehicleId | AiVehicleId)[] = AI_VEHICLES,
+): AppearanceConfig {
+  const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
   return {
     paint: pick(PAINTS).color,
     spoiler: pick(SPOILER_STYLES).id,
     rims: pick(RIM_STYLES).id,
     underglow: Math.random() < 0.6 ? pick(UNDERGLOWS.filter((u) => u.color !== null)).color : null,
+    vehicle: pick(vehiclePool),
   };
 }
 
@@ -243,6 +265,11 @@ const isLivery = (v: unknown): v is LiveryId =>
   typeof v === 'string' && (LIVERIES as { id: string }[]).some((l) => l.id === v);
 
 const isRim = (v: unknown): v is RimStyle => v === 'sport' || v === 'mesh' || v === 'dish';
+
+const isVehicle = (v: unknown): v is AppearanceConfig['vehicle'] =>
+  typeof v === 'string' &&
+  ((PLAYER_VEHICLES as readonly { id: string }[]).some((x) => x.id === v) ||
+    (AI_VEHICLES as readonly string[]).includes(v));
 
 const validRecord = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;

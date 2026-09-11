@@ -7,8 +7,8 @@ export type CameraMode = 'chase' | 'hood' | 'cockpit';
 const BASE_FOV = 62;
 const SPEED_FOV = 16;
 
-/** 驾驶位（车局部坐标：左驾） */
-const COCKPIT_OFFSET = { side: -0.42, up: 1.06, back: -0.35 };
+/** 驾驶位（车局部坐标：左驾；高度按车型车顶自适应） */
+const COCKPIT_OFFSET = { side: -0.42, back: -0.35 };
 
 /** 弹簧臂追逐 / 引擎盖 / 驾驶舱三视角，FOV 随速度拉远，氮气冲击 + 震动 */
 export class ChaseCamera {
@@ -33,12 +33,13 @@ export class ChaseCamera {
     const speedK = car.speedKmh / 220;
 
     if (this.mode === 'cockpit') {
-      // 刚体跟随驾驶位（无弹簧臂），随车身俯仰/侧倾
+      // 刚体跟随驾驶位（无弹簧臂），随车身俯仰/侧倾；高度按车型车顶自适应
       const rx = -Math.cos(st.heading);
       const rz = Math.sin(st.heading);
+      const up = car.model.metrics.roofY * 0.88;
       camera.position.set(
         car.pos.x + rx * COCKPIT_OFFSET.side + fx * COCKPIT_OFFSET.back,
-        car.pos.y + COCKPIT_OFFSET.up,
+        car.pos.y + up,
         car.pos.z + rz * COCKPIT_OFFSET.side + fz * COCKPIT_OFFSET.back,
       );
       camera.rotation.order = 'YXZ';

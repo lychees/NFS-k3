@@ -20,29 +20,35 @@ interface PoliceUnit {
   lastT: number;
   redMat: THREE.MeshStandardMaterial;
   blueMat: THREE.MeshStandardMaterial;
+  lightBar: THREE.Group;
 }
 
-const POLICE_APPEARANCE = { paint: 0x14161c, spoiler: 'low' as const, rims: 'dish' as const, underglow: null };
+const POLICE_APPEARANCE = { paint: 0x14161c, spoiler: 'low' as const, rims: 'dish' as const, underglow: null, vehicle: 'police' as const };
 const POLICE_LIVERY = { id: 'twotone' as const, accent: 0xf2f2f2, number: 0 };
 
-/** 车顶爆闪灯条：红蓝发光盒交替高亮 */
-function buildLightBar(car: Car): { redMat: THREE.MeshStandardMaterial; blueMat: THREE.MeshStandardMaterial } {
+/** 车顶爆闪灯条：红蓝发光盒交替高亮（位置按车型车顶高度） */
+function buildLightBar(car: Car): {
+  redMat: THREE.MeshStandardMaterial;
+  blueMat: THREE.MeshStandardMaterial;
+  group: THREE.Group;
+} {
   const group = new THREE.Group();
+  const roofY = car.model.metrics.roofY;
   const base = new THREE.Mesh(
     new THREE.BoxGeometry(0.9, 0.07, 0.34),
     new THREE.MeshStandardMaterial({ color: 0x0c0d10, roughness: 0.5 }),
   );
-  base.position.set(0, 1.26, -0.5);
+  base.position.set(0, roofY + 0.06, -0.5);
   group.add(base);
   const redMat = new THREE.MeshStandardMaterial({ color: 0x200505, emissive: 0xff2020, emissiveIntensity: 3 });
   const blueMat = new THREE.MeshStandardMaterial({ color: 0x050520, emissive: 0x2040ff, emissiveIntensity: 0.25 });
   const red = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.14, 0.3), redMat);
-  red.position.set(-0.23, 1.35, -0.5);
+  red.position.set(-0.23, roofY + 0.15, -0.5);
   const blue = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.14, 0.3), blueMat);
-  blue.position.set(0.23, 1.35, -0.5);
+  blue.position.set(0.23, roofY + 0.15, -0.5);
   group.add(red, blue);
   car.model.body.add(group);
-  return { redMat, blueMat };
+  return { redMat, blueMat, group };
 }
 
 /**
@@ -68,11 +74,22 @@ export class PursuitManager {
         makeTuning({ engine: 4, tires: 3, nitro: 0 }),
         POLICE_LIVERY,
       );
-      const { redMat, blueMat } = buildLightBar(car);
+      const { redMat, blueMat, group } = buildLightBar(car);
       car.group.visible = false;
       parent.add(car.group);
       this.cars.push(car);
-      this.units.push({ car, driver: new PursuitDriver(i + 11), progress: 0, lastT: 0, redMat, blueMat });
+      this.units.push({ car, driver: new PursuitDriver(i + 11), progress: 0, lastT: 0, redMat, blueMat, lightBar: group });
+    }
+  }
+
+  /** GLB 模板就绪后换装警车模型并重新挂爆闪灯（旧模型已随换装销毁） */
+  refreshModels(template: import('../car/glbCar').GlbTemplate | null): void {
+    for (const u of this.units) {
+      u.car.rebuildVisual(POLICE_APPEARANCE, POLICE_LIVERY, template);
+      const { redMat, blueMat, group } = buildLightBar(u.car);
+      u.redMat = redMat;
+      u.blueMat = blueMat;
+      u.lightBar = group;
     }
   }
 

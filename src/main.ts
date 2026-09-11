@@ -18,6 +18,8 @@ import { Hud, type HudData } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { Screens } from './ui/screens';
 import {
+  AI_VEHICLES,
+  PLAYER_VEHICLE_IDS,
   loadSave,
   persistSave,
   randomAppearance,
@@ -25,6 +27,7 @@ import {
   tryBuy,
   RACE_REWARDS,
 } from './garage/save';
+import { getTemplate, preloadLibrary } from './car/glbCar';
 import { GarageScreen } from './garage/garageScreen';
 import { GaragePreview } from './garage/garagePreview';
 import { SmokePool } from './fx/smoke';
@@ -175,7 +178,7 @@ window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
 
 const player = new Car('P1', save.appearance, makeTuning(save.upgrades), save.livery);
-const player2 = new Car('P2', randomAppearance(), makeTuning({ engine: 1, tires: 1, nitro: 1 }), randomLivery());
+const player2 = new Car('P2', randomAppearance(PLAYER_VEHICLE_IDS), makeTuning({ engine: 1, tires: 1, nitro: 1 }), randomLivery());
 const cockpitP1 = new Cockpit();
 const cockpitP2 = new Cockpit();
 player.installCockpit(cockpitP1);
@@ -184,13 +187,33 @@ const aiCars = [0, 1, 2].map(
   (i) =>
     new Car(
       `AI-${i + 1}`,
-      randomAppearance(),
+      randomAppearance(AI_VEHICLES),
       makeTuning({ engine: 0, tires: 0, nitro: 0 }),
       randomLivery(),
     ),
 );
 const allCars = [player, player2, ...aiCars];
 for (const c of allCars) scene.add(c.group);
+
+// ---------- GLB 车型库（Kenney Car Kit）：异步加载，失败回退程序化 ----------
+
+/** 按当前存档把各车换到 GLB 模型（模板未就绪的车保持程序化） */
+function applyVehicleModels(): void {
+  const apply = (car: Car): void => {
+    const t = getTemplate(car.appearance.vehicle);
+    if (t) car.rebuildVisual(car.appearance, car.livery, t);
+  };
+  apply(player);
+  apply(player2);
+  for (const c of aiCars) apply(c);
+  const policeTemplate = getTemplate('police');
+  if (policeTemplate) pursuit.refreshModels(policeTemplate);
+}
+
+void preloadLibrary().then(() => {
+  // 加载完成后若仍在菜单/车库，立即换装（比赛中则由 startRace 应用）
+  if (race.state === 'menu') applyVehicleModels();
+});
 
 const aiDrivers = aiCars.map((_, i) => new AIDriver(i + 1));
 const playerAutopilot = new AIDriver(7);
@@ -415,7 +438,7 @@ let inGarage = false;
 function closeGarage(): void {
   if (!inGarage) return;
   inGarage = false;
-  player.rebuildVisual(save.appearance, save.livery);
+  player.rebuildVisual(save.appearance, save.livery, getTemplate(save.appearance.vehicle));
   player.setTuning(makeTuning(save.upgrades));
   garageScreen.close();
   screens.showMenu();
@@ -425,14 +448,14 @@ const garageScreen = new GarageScreen({
   onAppearance: (patch) => {
     Object.assign(save.appearance, patch);
     persistSave(save);
-    garagePreview.setAppearance(save.appearance, save.livery);
+    garagePreview.setAppearance(save.appearance, save.livery, getTemplate(save.appearance.vehicle));
     garageScreen.refresh(save);
     audio.playSfx('uiSelect');
   },
   onLivery: (patch) => {
     Object.assign(save.livery, patch);
     persistSave(save);
-    garagePreview.setAppearance(save.appearance, save.livery);
+    garagePreview.setAppearance(save.appearance, save.livery, getTemplate(save.appearance.vehicle));
     garageScreen.refresh(save);
     audio.playSfx('uiSelect');
   },
@@ -467,7 +490,7 @@ function openGarage(): void {
   if (race.state !== 'menu' || inGarage) return;
   inGarage = true;
   screens.hideMenu();
-  garagePreview.setAppearance(save.appearance, save.livery);
+  garagePreview.setAppearance(save.appearance, save.livery, getTemplate(save.appearance.vehicle));
   garageScreen.open(save);
 }
 
@@ -496,6 +519,15 @@ function startRace(nextMode: GameMode, twoPlayer: boolean): void {
     persistSave(save);
   }
   player.setTuning(makeTuning(save.upgrades));
+  // 每局：AI/P2 重新随机外观与车型，并按已加载模板换装 GLB（未加载则保持程序化）
+  player2.rebuildVisual(randomAppearance(PLAYER_VEHICLE_IDS), randomLivery(), getTemplate(player2.appearance.vehicle));
+  for (const c of aiCars) {
+    c.rebuildVisual(randomAppearance(AI_VEHICLES), randomLivery(), getTemplate(c.appearance.vehicle));
+  }
+  {
+    const t = getTemplate(save.appearance.vehicle);
+    if (t) player.rebuildVisual(save.appearance, save.livery, t);
+  }
   field = buildField(twoPlayer);
   race.startRace(bundle.track, {
     knockout: mode === 'knockout',

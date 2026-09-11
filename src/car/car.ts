@@ -15,6 +15,7 @@ import { clamp, damp, lerp } from '../utils/math';
 import { headingFromTangent, type Track } from '../track/track';
 import type { AppearanceConfig, LiveryConfig } from '../garage/save';
 import { NitroFlame } from '../fx/nitroFlame';
+import { buildGlbCarModel, type GlbTemplate } from './glbCar';
 import type { Cockpit } from './cockpit';
 import {
   DAMAGE_MAX,
@@ -214,14 +215,17 @@ export class Car {
     this.state.steer = p.steer;
   }
 
-  /** 更换外观/涂装（车库实时预览 / 改装后立即生效），物理状态不受影响 */
-  rebuildVisual(appearance: AppearanceConfig, livery: LiveryConfig): void {
+  /** 更换外观/涂装（车库实时预览 / 改装后立即生效），物理状态不受影响；
+   *  template 存在时用 GLB 模型，否则程序化车模（保底） */
+  rebuildVisual(appearance: AppearanceConfig, livery: LiveryConfig, template?: GlbTemplate | null): void {
     this.appearance = appearance;
     this.livery = livery;
     for (const f of this.flames) f.setActive(false);
     this.group.remove(this.model.root);
     disposeCarModel(this.model);
-    this.model = buildCarModel(appearance, livery);
+    this.model = template
+      ? buildGlbCarModel(appearance, livery, template)
+      : buildCarModel(appearance, livery);
     this.group.add(this.model.root);
     this.flames = this.model.exhausts.map((a) => new NitroFlame(a));
     // 新模型的损伤组按当前档位重贴
@@ -341,7 +345,7 @@ export class Car {
     }
 
     // 车轮：前轮随转向偏转，全部随速度滚动
-    this.wheelSpin += (st.forwardSpeed / 0.34) * dt;
+    this.wheelSpin += (st.forwardSpeed / this.model.metrics.wheelR) * dt;
     this.model.wheelFL.rotation.y = st.steer;
     this.model.wheelFR.rotation.y = st.steer;
     this.model.spinFL.rotation.x = this.wheelSpin;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildCarModel, disposeCarModel, type CarModel } from '../car/carModel';
+import { buildGlbCarModel, type GlbTemplate } from '../car/glbCar';
 import type { AppearanceConfig, LiveryConfig } from './save';
 
 /** 车库 3D 预览：旋转展台 + 霓虹氛围灯，独立于比赛场景 */
@@ -47,12 +48,13 @@ export class GaragePreview {
     this.scene.add(this.turntable);
   }
 
-  setAppearance(cfg: AppearanceConfig, livery: LiveryConfig): void {
+  /** template 存在时预览 GLB 车型，否则程序化车模（保底） */
+  setAppearance(cfg: AppearanceConfig, livery: LiveryConfig, template?: GlbTemplate | null): void {
     if (this.model) {
       this.turntable.remove(this.model.root);
       disposeCarModel(this.model);
     }
-    this.model = buildCarModel(cfg, livery);
+    this.model = template ? buildGlbCarModel(cfg, livery, template) : buildCarModel(cfg, livery);
     this.turntable.add(this.model.root);
   }
 
