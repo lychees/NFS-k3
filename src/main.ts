@@ -31,6 +31,7 @@ import {
 import { getTemplate, preloadLibrary } from './car/glbCar';
 import { GarageScreen } from './garage/garageScreen';
 import { GaragePreview } from './garage/garagePreview';
+import { PaintShopScreen } from './ui/paintShopScreen';
 import { TrackEditor } from './ui/trackEditor';
 import { SmokePool } from './fx/smoke';
 import { SpeedLines } from './fx/speedLines';
@@ -205,7 +206,7 @@ window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
 
 const player = new Car('P1', save.appearance, makeTuning(save.upgrades), save.livery);
-const player2 = new Car('P2', randomAppearance(PLAYER_VEHICLE_IDS), makeTuning({ engine: 1, tires: 1, nitro: 1 }), randomLivery());
+const player2 = new Car('P2', randomAppearance(PLAYER_VEHICLE_IDS), makeTuning({ engine: 1, tires: 1, nitro: 1 }), randomLivery(save.liveryDesigns));
 const cockpitP1 = new Cockpit();
 const cockpitP2 = new Cockpit();
 player.installCockpit(cockpitP1);
@@ -216,7 +217,7 @@ const aiCars = [0, 1, 2].map(
       `AI-${i + 1}`,
       randomAppearance(AI_VEHICLES),
       makeTuning({ engine: 0, tires: 0, nitro: 0 }),
-      randomLivery(),
+      randomLivery(save.liveryDesigns),
     ),
 );
 const allCars = [player, player2, ...aiCars];
@@ -519,9 +520,36 @@ const garageScreen = new GarageScreen({
     garageScreen.refresh(save);
     audio.playSfx('uiSelect');
   },
+  onPaintShop: () => {
+    paintShop.open(save.livery.customImage ?? null);
+    audio.playSfx('uiSelect');
+  },
   onBack: () => {
     audio.playSfx('uiSelect');
     closeGarage();
+  },
+});
+
+// ---------- 涂装绘制器（车库内进入，预览持续渲染） ----------
+
+const paintShop = new PaintShopScreen({
+  onImage: (image) => {
+    // 画布变化即设为当前自定义涂装（throttle 到每次笔画提交）
+    save.livery.customImage = image;
+    save.livery.id = 'custom';
+    persistSave(save);
+    garagePreview.setAppearance(save.appearance, save.livery, getTemplate(save.appearance.vehicle));
+    garageScreen.refresh(save);
+  },
+  onClose: () => {
+    paintShop.close();
+    garageScreen.refresh(save);
+    audio.playSfx('uiSelect');
+  },
+  getDesigns: () => save.liveryDesigns,
+  onSaveDesigns: (designs) => {
+    save.liveryDesigns = designs;
+    persistSave(save);
   },
 });
 
@@ -603,9 +631,9 @@ function startRace(nextMode: GameMode, twoPlayer: boolean): void {
   persistSave(save);
   player.setTuning(makeTuning(save.upgrades));
   // 每局：AI/P2 重新随机外观与车型，并按已加载模板换装 GLB（未加载则保持程序化）
-  player2.rebuildVisual(randomAppearance(PLAYER_VEHICLE_IDS), randomLivery(), getTemplate(player2.appearance.vehicle));
+  player2.rebuildVisual(randomAppearance(PLAYER_VEHICLE_IDS), randomLivery(save.liveryDesigns), getTemplate(player2.appearance.vehicle));
   for (const c of aiCars) {
-    c.rebuildVisual(randomAppearance(AI_VEHICLES), randomLivery(), getTemplate(c.appearance.vehicle));
+    c.rebuildVisual(randomAppearance(AI_VEHICLES), randomLivery(save.liveryDesigns), getTemplate(c.appearance.vehicle));
   }
   {
     const t = getTemplate(save.appearance.vehicle);
@@ -846,6 +874,12 @@ input.onPress('KeyM', () => {
 });
 
 input.onPress('Escape', () => {
+  if (paintShop.isOpen) {
+    paintShop.close();
+    garageScreen.refresh(save);
+    audio.playSfx('uiSelect');
+    return;
+  }
   if (replaying) {
     exitReplay();
     return;

@@ -145,6 +145,64 @@
       </div>
     </div>
 
+    <div id="screen-paintshop" class="screen hidden">
+      <div class="editor-layout">
+        <div class="editor-canvas-wrap ps-canvas-wrap">
+          <div class="ps-stage">
+            <canvas id="ps-canvas"></canvas>
+            <canvas id="ps-overlay"></canvas>
+          </div>
+        </div>
+        <div class="editor-panel">
+          <div class="menu-subtitle">PAINT SHOP</div>
+          <div class="garage-section">
+            <div class="garage-label">工具 TOOL</div>
+            <div class="garage-row">
+              <button class="option" id="ps-tool-brush">画笔</button>
+              <button class="option" id="ps-tool-line">直线</button>
+              <button class="option" id="ps-tool-rect">矩形</button>
+              <button class="option" id="ps-tool-circle">圆形</button>
+              <button class="option" id="ps-tool-fill">填充</button>
+              <button class="option" id="ps-tool-eraser">橡皮</button>
+            </div>
+          </div>
+          <div class="garage-section">
+            <div class="garage-label">颜色 / 粗细 <span id="ps-size-val">8px</span></div>
+            <div class="garage-row ps-color-row">
+              <input id="ps-color" type="color" value="#ffd320" />
+              <input id="ps-size" type="range" min="2" max="40" step="1" value="8" />
+            </div>
+            <div class="garage-row">
+              <button class="option" id="ps-grid">网格</button>
+              <button class="option" id="ps-mirror">镜像</button>
+              <button class="option" id="ps-undo">撤销</button>
+              <button class="option" id="ps-clear">清空</button>
+            </div>
+          </div>
+          <div class="garage-section">
+            <div class="garage-label">方案 DESIGN</div>
+            <div class="garage-row">
+              <input id="ps-name" type="text" maxlength="24" placeholder="自定义拉花" />
+              <button class="option" id="ps-save-design">存方案</button>
+            </div>
+            <div id="ps-design-list"></div>
+          </div>
+          <div class="garage-section">
+            <div class="garage-label">导入 / 导出 JSON</div>
+            <textarea id="ps-json" rows="3" placeholder="导出生成 / 导入粘贴"></textarea>
+            <div class="garage-row">
+              <button class="option" id="ps-export">导出</button>
+              <button class="option" id="ps-import">导入</button>
+            </div>
+          </div>
+          <div class="garage-row editor-btns">
+            <button class="option" id="ps-close">返回车库</button>
+          </div>
+          <div class="menu-hint">透明底画布 · 应用至引擎盖与车顶 · Ctrl+Z 撤销</div>
+        </div>
+      </div>
+    </div>
+
     <div id="screen-pause" class="screen hidden">
       <div class="menu-inner">
         <h1 class="menu-title small">PAUSED</h1>

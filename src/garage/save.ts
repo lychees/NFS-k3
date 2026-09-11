@@ -25,14 +25,17 @@ export type LiveryId =
   | 'twotone'
   | 'checkered'
   | 'flames'
-  | 'slashes';
+  | 'slashes'
+  | 'custom';
 
-/** 涂装配置：预设 + 强调色 + 赛车号码 */
+/** 涂装配置：预设 + 强调色 + 赛车号码；custom 时使用 customImage（PNG dataURL） */
 export interface LiveryConfig {
   id: LiveryId;
   accent: number;
   /** 0-99 */
   number: number;
+  /** 'custom' 涂装的贴图（无绘制内容时为 null = 无涂装） */
+  customImage?: string | null;
 }
 
 export interface AppearanceConfig {
@@ -68,6 +71,8 @@ export interface SaveData {
   records: Record<string, number>;
   /** 编辑器自定义赛道 */
   customTracks: import('../track/customTrack').CustomTrackData[];
+  /** 涂装工作室已存方案 */
+  liveryDesigns: import('../car/customLivery').LiveryDesign[];
   /** 上次比赛设置：时间 × 天气 */
   lastConditions: {
     time: 'day' | 'sunset' | 'night';
@@ -121,6 +126,7 @@ export const LIVERIES: { id: LiveryId; name: string }[] = [
   { id: 'checkered', name: '格子旗' },
   { id: 'flames', name: '烈焰' },
   { id: 'slashes', name: '斜纹' },
+  { id: 'custom', name: '自定义' },
 ];
 
 export const ACCENTS: { name: string; color: number }[] = [
@@ -144,7 +150,7 @@ export function defaultSave(): SaveData {
     credits: 0,
     upgrades: { engine: 0, tires: 0, nitro: 0 },
     appearance: { paint: PAINTS[0].color, spoiler: 'low', rims: 'sport', underglow: 0x18e0ff, vehicle: 'race' },
-    livery: { id: 'stripes', accent: 0xf2f2f2, number: 7 },
+    livery: { id: 'stripes', accent: 0xf2f2f2, number: 7, customImage: null },
     bloom: true,
     muted: false,
     volume: 0.8,
@@ -152,6 +158,7 @@ export function defaultSave(): SaveData {
     lastTracks: {},
     records: {},
     customTracks: [],
+    liveryDesigns: [],
     lastConditions: { time: 'day', weather: 'clear' },
     damageEnabled: true,
   };
@@ -185,6 +192,9 @@ export function loadSave(): SaveData {
         accent:
           typeof data.livery?.accent === 'number' ? data.livery.accent : base.livery.accent,
         number: clampCarNumber(data.livery?.number),
+        customImage: isImageDataUrl(data.livery?.customImage)
+          ? data.livery.customImage || null
+          : null,
       },
       bloom: typeof data.bloom === 'boolean' ? data.bloom : true,
       muted: typeof data.muted === 'boolean' ? data.muted : false,
@@ -202,6 +212,7 @@ export function loadSave(): SaveData {
       records: migrateRecords(data.records),
       lastTracks: migrateLastTracks(data.lastTracks),
       customTracks: migrateCustomTracks(data.customTracks),
+      liveryDesigns: migrateLiveryDesigns(data.liveryDesigns),
       lastConditions: {
         time:
           data.lastConditions?.time === 'sunset' || data.lastConditions?.time === 'night'
@@ -250,11 +261,21 @@ export function randomAppearance(
   };
 }
 
-/** AI 车辆随机涂装 */
-export function randomLivery(): LiveryConfig {
-  const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+/** AI 车辆随机涂装（有已存自定义方案时 25% 概率选用） */
+export function randomLivery(
+  designs: import('../car/customLivery').LiveryDesign[] = [],
+): LiveryConfig {
+  const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
+  if (designs.length > 0 && Math.random() < 0.25) {
+    return {
+      id: 'custom',
+      accent: pick(ACCENTS).color,
+      number: Math.floor(Math.random() * 100),
+      customImage: pick(designs).image,
+    };
+  }
   return {
-    id: pick(LIVERIES.filter((l) => l.id !== 'none')).id,
+    id: pick(LIVERIES.filter((l) => l.id !== 'none' && l.id !== 'custom')).id,
     accent: pick(ACCENTS).color,
     number: Math.floor(Math.random() * 100),
   };
@@ -268,6 +289,9 @@ const isSpoiler = (v: unknown): v is SpoilerStyle =>
 
 const isLivery = (v: unknown): v is LiveryId =>
   typeof v === 'string' && (LIVERIES as { id: string }[]).some((l) => l.id === v);
+
+const isImageDataUrl = (v: unknown): v is string =>
+  typeof v === 'string' && v.startsWith('data:image/');
 
 const isRim = (v: unknown): v is RimStyle => v === 'sport' || v === 'mesh' || v === 'dish';
 
@@ -299,6 +323,23 @@ function migrateLastTracks(v: unknown): SaveData['lastTracks'] {
     for (const m of MODES) {
       const t = (v as Record<string, unknown>)[m];
       if (typeof t === 'string' && t.length > 0) out[m] = t;
+    }
+  }
+  return out;
+}
+
+function migrateLiveryDesigns(v: unknown): SaveData['liveryDesigns'] {
+  if (!Array.isArray(v)) return [];
+  const out: SaveData['liveryDesigns'] = [];
+  for (const d of v as Partial<SaveData['liveryDesigns'][number]>[]) {
+    if (
+      d &&
+      typeof d.id === 'string' &&
+      typeof d.name === 'string' &&
+      isImageDataUrl(d.image) &&
+      d.image !== ''
+    ) {
+      out.push({ id: d.id, name: d.name, image: d.image });
     }
   }
   return out;

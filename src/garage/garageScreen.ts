@@ -39,6 +39,8 @@ export interface GarageCallbacks {
   onToggleBloom(): void;
   /** 音量步进 ±0.1 */
   onVolume(delta: number): void;
+  /** 打开涂装绘制器 */
+  onPaintShop(): void;
   onBack(): void;
 }
 
@@ -93,6 +95,8 @@ export class GarageScreen {
     this.root.querySelectorAll<HTMLElement>('[data-accent]').forEach((b) => {
       b.classList.toggle('selected', Number(b.dataset.accent) === save.livery.accent);
     });
+    el<HTMLInputElement>('paint-free-color').value = cssColor(save.appearance.paint);
+    el<HTMLInputElement>('accent-free-color').value = cssColor(save.livery.accent);
     el<HTMLInputElement>('livery-number').value = String(save.livery.number);
     this.drawLiveryThumbs(save.livery.accent, save.livery.number);
 
@@ -140,6 +144,16 @@ export class GarageScreen {
       );
       paints.appendChild(b);
     }
+    // 自由取色（预设之外任意色号）
+    const paintPicker = document.createElement('input');
+    paintPicker.type = 'color';
+    paintPicker.className = 'free-color';
+    paintPicker.id = 'paint-free-color';
+    paintPicker.title = '自由取色';
+    paintPicker.addEventListener('input', () => {
+      this.cbs.onAppearance({ paint: parseInt(paintPicker.value.slice(1), 16) });
+    });
+    paints.appendChild(paintPicker);
 
     const spoilers = el('garage-spoilers');
     for (const s of SPOILER_STYLES) {
@@ -213,6 +227,22 @@ export class GarageScreen {
       b.addEventListener('click', () => this.cbs.onLivery({ accent: a.color }));
       accents.appendChild(b);
     }
+    const accentPicker = document.createElement('input');
+    accentPicker.type = 'color';
+    accentPicker.className = 'free-color';
+    accentPicker.id = 'accent-free-color';
+    accentPicker.title = '自由取色';
+    accentPicker.addEventListener('input', () => {
+      this.cbs.onLivery({ accent: parseInt(accentPicker.value.slice(1), 16) });
+    });
+    accents.appendChild(accentPicker);
+
+    const paintShopBtn = document.createElement('button');
+    paintShopBtn.className = 'option';
+    paintShopBtn.id = 'garage-paintshop';
+    paintShopBtn.textContent = '涂装工作室 PAINT SHOP';
+    paintShopBtn.addEventListener('click', () => this.cbs.onPaintShop());
+    el('garage-liveries').appendChild(paintShopBtn);
 
     const numInput = el<HTMLInputElement>('livery-number');
     numInput.addEventListener('change', () => {
@@ -298,6 +328,28 @@ export class GarageScreen {
           ctx.fillRect(3, -h / 2, 8, h);
           ctx.restore();
           break;
+        case 'custom': {
+          const img = this.save?.livery.customImage;
+          if (img) {
+            const image = new Image();
+            image.onload = () => {
+              ctx.clearRect(0, 0, w, h);
+              ctx.fillStyle = '#2a2d36';
+              ctx.beginPath();
+              ctx.roundRect(16, 3, w - 32, h - 6, 7);
+              ctx.fill();
+              ctx.drawImage(image, 17, 4, w - 34, h - 8);
+            };
+            image.src = img;
+          } else {
+            ctx.fillStyle = '#8a93a8';
+            ctx.font = 'italic 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('未绘制', w / 2, h / 2);
+          }
+          break;
+        }
       }
     }
   }

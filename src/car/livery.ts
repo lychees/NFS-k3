@@ -279,12 +279,31 @@ function slashesHoodTex(accent: number): THREE.CanvasTexture {
   });
 }
 
+/** 自定义涂装纹理：dataURL 图像（无内容/无 DOM 环境时返回 null） */
+function customTex(image: string): THREE.Texture | null {
+  if (typeof document === 'undefined' || typeof document.createElementNS !== 'function') {
+    return null; // 无头环境（测试）安全跳过
+  }
+  const tex = new THREE.TextureLoader().load(image);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
 /** 按涂装配置生成贴片组，挂载到车身 body 层 */
 export function buildLiveryDecals(cfg: LiveryConfig, m: CarMetrics): THREE.Group {
   const g = new THREE.Group();
   switch (cfg.id) {
     case 'none':
       break;
+    case 'custom': {
+      // 自定义绘制贴图：引擎盖 + 车顶贴片；未绘制任何内容 = 无涂装
+      if (cfg.customImage) {
+        const tex = customTex(cfg.customImage);
+        if (tex) g.add(hoodDecal(tex, m), roofDecal(tex, m));
+      }
+      break;
+    }
     case 'stripes': {
       const tex = stripesTex(cfg.accent);
       g.add(hoodDecal(tex, m), roofDecal(tex, m));

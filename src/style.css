@@ -1000,3 +1000,69 @@ body {
 .track-option {
   font-size: 13px;
 }
+
+/* ---------- 涂装绘制器 ---------- */
+
+.ps-canvas-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ps-stage {
+  position: relative;
+  width: min(70vh, 90%);
+  aspect-ratio: 1;
+  background:
+    repeating-conic-gradient(rgba(255,255,255,0.08) 0% 25%, rgba(0,0,0,0.25) 0% 50%) 0 0 / 32px 32px;
+  border: 2px solid #ffd320;
+  border-radius: 4px;
+}
+
+.ps-stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  cursor: crosshair;
+}
+
+#ps-name {
+  flex: 1;
+  padding: 5px 8px;
+  font-family: inherit;
+  font-style: italic;
+  font-size: 14px;
+  color: #ffd320;
+  background: rgba(6, 20, 28, 0.7);
+  border: 2px solid #ffd320;
+  border-radius: 3px;
+  outline: none;
+}
+
+.ps-color-row input[type='color'] {
+  width: 44px;
+  height: 30px;
+  padding: 0;
+  border: 2px solid #ffd320;
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+}
+
+.ps-color-row input[type='range'] {
+  flex: 1;
+  accent-color: #ffd320;
+}
+
+/* 自由取色（车库车漆/强调色行内） */
+.free-color {
+  width: 40px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid #8a93a8;
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+}
