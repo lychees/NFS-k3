@@ -22,6 +22,7 @@ import { Screens } from './ui/screens';
 import {
   AI_VEHICLES,
   PLAYER_VEHICLE_IDS,
+  type PlayerVehicleId,
   loadSave,
   persistSave,
   randomAppearance,
@@ -30,6 +31,7 @@ import {
   RACE_REWARDS,
 } from './garage/save';
 import { getTemplate, preloadLibrary } from './car/glbCar';
+import { applyVehicleSpec, vehicleSpecOf } from './car/vehicleSpecs';
 import { GarageScreen } from './garage/garageScreen';
 import { GaragePreview } from './garage/garagePreview';
 import { PaintShopScreen } from './ui/paintShopScreen';
@@ -225,6 +227,9 @@ const allCars = [player, player2, ...aiCars];
 for (const c of allCars) scene.add(c.group);
 
 // ---------- GLB 车型库（Kenney Car Kit）：异步加载，失败回退程序化 ----------
+
+/** 玩家调校 = 改装等级 × 车型档案（AI/P2 用基础调校不受影响） */
+const playerTuning = () => applyVehicleSpec(makeTuning(save.upgrades), vehicleSpecOf(save.appearance.vehicle as PlayerVehicleId));
 
 /** 按当前存档把各车换到 GLB 模型（模板未就绪的车保持程序化） */
 function applyVehicleModels(): void {
@@ -479,7 +484,7 @@ function closeGarage(): void {
   if (!inGarage) return;
   inGarage = false;
   player.rebuildVisual(save.appearance, save.livery, getTemplate(save.appearance.vehicle));
-  player.setTuning(makeTuning(save.upgrades));
+  player.setTuning(playerTuning());
   garageScreen.close();
   screens.showMenu();
 }
@@ -501,7 +506,7 @@ const garageScreen = new GarageScreen({
   },
   onBuy: (key) => {
     if (tryBuy(save, key)) {
-      player.setTuning(makeTuning(save.upgrades));
+      player.setTuning(playerTuning());
       garageScreen.refresh(save);
       audio.playSfx('uiConfirm');
     }
@@ -629,7 +634,7 @@ function startRace(nextMode: GameMode, twoPlayer: boolean): void {
   }
   save.lastTracks[mode] = trackId;
   persistSave(save);
-  player.setTuning(makeTuning(save.upgrades));
+  player.setTuning(playerTuning());
   // 每局：AI/P2 重新随机外观与车型，并按已加载模板换装 GLB（未加载则保持程序化）
   player2.rebuildVisual(randomAppearance(PLAYER_VEHICLE_IDS), randomLivery(save.liveryDesigns), getTemplate(player2.appearance.vehicle));
   for (const c of aiCars) {

@@ -12,9 +12,18 @@ import {
   type AppearanceConfig,
   type LiveryConfig,
   type LiveryId,
+  type PlayerVehicleId,
   type SaveData,
   type UpgradeLevels,
 } from './save';
+import { makeTuning } from '../car/carPhysics';
+import {
+  applyVehicleSpec,
+  perfTooltip,
+  performanceBars,
+  vehicleSpecOf,
+  type PerfBars,
+} from '../car/vehicleSpecs';
 
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
@@ -76,6 +85,7 @@ export class GarageScreen {
     this.root.querySelectorAll<HTMLElement>('[data-vehicle]').forEach((b) => {
       b.classList.toggle('selected', b.dataset.vehicle === save.appearance.vehicle);
     });
+    this.renderPerfBars(save);
     this.root.querySelectorAll<HTMLElement>('[data-paint]').forEach((b) => {
       b.classList.toggle('selected', Number(b.dataset.paint) === save.appearance.paint);
     });
@@ -119,6 +129,33 @@ export class GarageScreen {
 
     el('quality-bloom').textContent = `泛光 BLOOM：${save.bloom ? '开' : '关'}`;
     el('vol-label').textContent = `${Math.round(save.volume * 100)}%${save.muted ? ' · 静音' : ''}`;
+  }
+
+  /** 性能参数条：车型档案 × 当前改装等级，实时重算 */
+  private renderPerfBars(save: SaveData): void {
+    const spec = vehicleSpecOf(save.appearance.vehicle as PlayerVehicleId);
+    const tuning = applyVehicleSpec(makeTuning(save.upgrades), spec);
+    const bars = performanceBars(tuning);
+    el('vehicle-desc').textContent = `${spec.name} · ${spec.desc}`;
+    const wrap = el('perf-bars');
+    wrap.innerHTML = '';
+    const rows: [keyof PerfBars, string][] = [
+      ['speed', 'SPEED'],
+      ['accel', 'ACCEL'],
+      ['handling', 'HANDLING'],
+      ['nitro', 'NITRO'],
+    ];
+    for (const [key, label] of rows) {
+      const v = bars[key];
+      const row = document.createElement('div');
+      row.className = 'perf-row';
+      row.title = perfTooltip(tuning, key);
+      row.innerHTML =
+        `<span class="perf-label">${label}</span>` +
+        `<span class="perf-track"><span class="perf-fill" style="width:${v * 10}%"></span></span>` +
+        `<span class="perf-val">${v.toFixed(1)}</span>`;
+      wrap.appendChild(row);
+    }
   }
 
   private buildAppearanceRows(): void {
