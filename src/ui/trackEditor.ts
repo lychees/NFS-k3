@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEFAULT_THEME, THEMES, themeOf, type ThemeId } from '../track/themes';
 import {
   HistoryStack,
   applyStartAndDirection,
@@ -45,6 +46,7 @@ interface EditorState {
   vegetation: number;
   startIndex: number;
   direction: 1 | -1;
+  theme: ThemeId;
   selected: number;
   selectedSet: number[];
 }
@@ -82,6 +84,7 @@ export class TrackEditor {
   private selectedSet = new Set<number>();
   private startIndex = 0;
   private direction: 1 | -1 = 1;
+  private theme: ThemeId = DEFAULT_THEME;
   /** 网格吸附：0 关 / 10 / 25（米） */
   private snapSize = 0;
 
@@ -147,6 +150,7 @@ export class TrackEditor {
       custom: true,
       startIndex: this.startIndex,
       direction: this.direction,
+      theme: this.theme,
     };
   }
 
@@ -160,6 +164,7 @@ export class TrackEditor {
       vegetation: this.vegetation,
       startIndex: this.startIndex,
       direction: this.direction,
+      theme: this.theme,
       selected: this.selected,
       selectedSet: [...this.selectedSet],
     };
@@ -174,6 +179,7 @@ export class TrackEditor {
     this.vegetation = s.vegetation;
     this.startIndex = s.startIndex;
     this.direction = s.direction;
+    this.theme = s.theme;
     this.selected = s.selected;
     this.selectedSet = new Set(s.selectedSet);
     this.activeBurst = null;
@@ -234,6 +240,7 @@ export class TrackEditor {
     this.selectedSet = new Set();
     this.startIndex = startIndexOf(d);
     this.direction = directionOf(d);
+    this.theme = themeOf(d.theme);
     this.history.clear();
     this.syncUndoButtons();
     this.syncPanel();
@@ -249,6 +256,7 @@ export class TrackEditor {
     this.selectedSet = new Set();
     this.startIndex = 0;
     this.direction = 1;
+    this.theme = DEFAULT_THEME;
     this.history.clear();
     this.syncUndoButtons();
     this.syncPanel();
@@ -270,6 +278,9 @@ export class TrackEditor {
     el('editor-veg-val').textContent = `×${this.vegetation.toFixed(1)}`;
     el('editor-snap').textContent = this.snapSize === 0 ? '吸附 关' : `吸附 ${this.snapSize}m`;
     el('editor-direction').textContent = this.direction === 1 ? '方向 →' : '方向 ←';
+    for (const t of Object.keys(THEMES) as ThemeId[]) {
+      el(`editor-theme-${t}`).classList.toggle('selected', this.theme === t);
+    }
     this.syncUndoButtons();
     this.syncSelected();
   }
@@ -350,6 +361,14 @@ export class TrackEditor {
       this.syncPanel();
     });
     el('editor-set-start').addEventListener('click', () => this.setStart());
+    for (const t of Object.keys(THEMES) as ThemeId[]) {
+      el(`editor-theme-${t}`).addEventListener('click', () => {
+        this.mutate(() => {
+          this.theme = t;
+        });
+        this.syncPanel();
+      });
+    }
     el<HTMLInputElement>('editor-name').addEventListener('input', (e) => {
       this.mutate(() => {
         this.name = (e.target as HTMLInputElement).value;

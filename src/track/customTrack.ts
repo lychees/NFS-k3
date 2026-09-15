@@ -1,4 +1,5 @@
 import type { TrackDef, TrackId } from './trackData';
+import { themeOf } from './themes';
 
 /** 编辑器自定义赛道数据（localStorage 存储 / 导入导出格式） */
 export interface CustomTrackData {
@@ -15,6 +16,8 @@ export interface CustomTrackData {
   startIndex?: number;
   /** 发车方向：1 沿点序 / -1 反向，缺省 1 */
   direction?: 1 | -1;
+  /** 地形主题，缺省 grass */
+  theme?: import('./themes').ThemeId;
 }
 
 export const TRACK_FORMAT = 'retro-rush-track@1';
@@ -266,6 +269,7 @@ export function parseTrack(json: string): { data: CustomTrackData | null; error:
     halfWidth: typeof o.halfWidth === 'number' ? o.halfWidth : 7,
     hills: typeof o.hills === 'number' ? o.hills : 1,
     vegetation: typeof o.vegetation === 'number' ? o.vegetation : 1,
+    theme: themeOf(o.theme),
     custom: true,
     startIndex:
       n === 0 ? 0 : o.closed === true ? ((rawStart % n) + n) % n : rawStart >= n - 1 ? n - 1 : 0,
@@ -308,6 +312,7 @@ export function toTrackDef(data: CustomTrackData): TrackDef {
     laps: data.closed ? 3 : 1,
     startOffset: data.closed ? 0 : 17,
     hills: data.hills,
+    theme: themeOf(data.theme),
     vegetation: data.vegetation,
   };
 }

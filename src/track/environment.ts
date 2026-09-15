@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { lerp, smoothstep } from '../utils/math';
+import { THEMES, themeOf } from './themes';
 import type { Track } from './track';
 
 export interface GroundInfo {
@@ -94,6 +96,8 @@ export function createTerrain(track: Track): Terrain {
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
   const color = new THREE.Color();
+  const palette = THEMES[themeOf(track.def.theme)];
+  const dirt = new THREE.Color(palette.roadDirt);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i) + cx;
     const z = pos.getZ(i) + cz;
@@ -102,8 +106,12 @@ export function createTerrain(track: Track): Terrain {
     pos.setY(i, y);
 
     const n = Math.sin(x * 0.11) * Math.cos(z * 0.13) * 0.5 + 0.5;
-    color.setHSL(0.27 + n * 0.05, 0.42, 0.24 + n * 0.08 + Math.max(y, 0) * 0.004);
-    if (g.d < 16) color.lerp(new THREE.Color(0x5a5a3c), smoothstep(16, 8, g.d) * 0.55);
+    color.setHSL(
+      palette.groundH[0] + n * (palette.groundH[1] - palette.groundH[0]),
+      palette.groundS,
+      lerp(palette.groundL[0], palette.groundL[1], n) + Math.max(y, 0) * 0.004,
+    );
+    if (g.d < 16) color.lerp(dirt, smoothstep(16, 8, g.d) * 0.55);
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
@@ -166,28 +174,21 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-/** 路边植被：树干 / 树冠 / 灌木三个 InstancedMesh 控制 draw call */
-export function createVegetation(terrain: Terrain, density = 1): THREE.Group {
+interface PropPlacement {
+  geo: THREE.BufferGeometry;
+  mat: THREE.MeshStandardMaterial;
+  castShadow: boolean;
+}
+
+/** 主题对应的植被/点缀物：InstancedMesh 控制 draw call，密度滑块决定强度 */
+export function createVegetation(track: Track, terrain: Terrain): THREE.Group {
   const rand = mulberry32(1995);
   const group = new THREE.Group();
+  const theme = themeOf(track.def.theme);
+  const density = track.def.vegetation;
   const b = terrain.bounds;
   const spanX = b.maxX - b.minX;
   const spanZ = b.maxZ - b.minZ;
-  const randX = () => b.minX + rand() * spanX;
-  const randZ = () => b.minZ + rand() * spanZ;
-
-  const treeCount = Math.round(240 * density);
-  const trunkGeo = new THREE.CylinderGeometry(0.22, 0.32, 2.4, 6);
-  trunkGeo.translate(0, 1.2, 0);
-  const leafGeo = new THREE.ConeGeometry(1.8, 4.4, 7);
-  leafGeo.translate(0, 4.2, 0);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1, flatShading: true });
-  const leafMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
-
-  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, treeCount);
-  const leaves = new THREE.InstancedMesh(leafGeo, leafMat, treeCount);
-  trunks.castShadow = true;
-  leaves.castShadow = true;
 
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
@@ -196,58 +197,174 @@ export function createVegetation(terrain: Terrain, density = 1): THREE.Group {
   const sc = new THREE.Vector3();
   const c = new THREE.Color();
 
-  let placed = 0;
-  let attempts = 0;
-  while (placed < treeCount && attempts < 9000) {
-    attempts++;
-    const x = randX();
-    const z = randZ();
-    const g = terrain.groundInfo(x, z);
-    if (g.d < 17 || g.d > 500) continue;
-    const s = 0.8 + rand() * 0.9;
-    q.setFromAxisAngle(up, rand() * Math.PI * 2);
-    p.set(x, terrain.heightAt(x, z) - 0.1, z);
-    sc.set(s, s, s);
-    m.compose(p, q, sc);
-    trunks.setMatrixAt(placed, m);
-    leaves.setMatrixAt(placed, m);
-    c.setHSL(0.29 + rand() * 0.06, 0.5, 0.24 + rand() * 0.1);
-    leaves.setColorAt(placed, c);
-    placed++;
-  }
-  trunks.count = placed;
-  leaves.count = placed;
-  trunks.instanceMatrix.needsUpdate = true;
-  leaves.instanceMatrix.needsUpdate = true;
-  if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true;
+  /** 通用摆放器：在 [minD, maxD] 距路范围内撒 count 个实例 */
+  const scatter = (
+    props: PropPlacement[],
+    count: number,
+    minD: number,
+    maxD: number,
+    colorFn: (i: number) => THREE.Color | null,
+    scaleFn: () => [number, number, number],
+    yOff = 0,
+  ): void => {
+    if (props.length === 0 || count <= 0) return;
+    const meshes = props.map((pr) => {
+      const mesh = new THREE.InstancedMesh(pr.geo, pr.mat, count);
+      mesh.castShadow = pr.castShadow;
+      group.add(mesh);
+      return mesh;
+    });
+    let placed = 0;
+    let attempts = 0;
+    while (placed < count && attempts < count * 40) {
+      attempts++;
+      const x = b.minX + rand() * spanX;
+      const z = b.minZ + rand() * spanZ;
+      const g = terrain.groundInfo(x, z);
+      if (g.d < minD || g.d > maxD) continue;
+      const [sx, sy, sz] = scaleFn();
+      q.setFromAxisAngle(up, rand() * Math.PI * 2);
+      p.set(x, terrain.heightAt(x, z) + yOff, z);
+      sc.set(sx, sy, sz);
+      m.compose(p, q, sc);
+      const col = colorFn(placed);
+      for (const mesh of meshes) {
+        mesh.setMatrixAt(placed, m);
+        if (col) mesh.setColorAt(placed, col);
+      }
+      placed++;
+    }
+    for (const mesh of meshes) {
+      mesh.count = placed;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }
+  };
 
-  const bushCount = Math.round(130 * density);
-  const bushGeo = new THREE.IcosahedronGeometry(0.9, 0);
-  const bushMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
-  const bushes = new THREE.InstancedMesh(bushGeo, bushMat, bushCount);
-  bushes.castShadow = true;
-  let bPlaced = 0;
-  attempts = 0;
-  while (bPlaced < bushCount && attempts < 5000) {
-    attempts++;
-    const x = randX();
-    const z = randZ();
-    const g = terrain.groundInfo(x, z);
-    if (g.d < 13 || g.d > 60) continue;
-    const s = 0.6 + rand() * 1.1;
-    q.setFromAxisAngle(up, rand() * Math.PI * 2);
-    p.set(x, terrain.heightAt(x, z) + 0.1, z);
-    sc.set(s, s * 0.7, s);
-    m.compose(p, q, sc);
-    bushes.setMatrixAt(bPlaced, m);
-    c.setHSL(0.27 + rand() * 0.05, 0.45, 0.2 + rand() * 0.08);
-    bushes.setColorAt(bPlaced, c);
-    bPlaced++;
-  }
-  bushes.count = bPlaced;
-  bushes.instanceMatrix.needsUpdate = true;
-  if (bushes.instanceColor) bushes.instanceColor.needsUpdate = true;
+  const std = (color: number, roughness = 1): THREE.MeshStandardMaterial =>
+    new THREE.MeshStandardMaterial({ color, roughness, flatShading: true });
+  const white = (): THREE.MeshStandardMaterial =>
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
+  const cyl = (r0: number, r1: number, h: number, seg: number, ty: number): THREE.CylinderGeometry => {
+    const g = new THREE.CylinderGeometry(r0, r1, h, seg);
+    g.translate(0, ty, 0);
+    return g;
+  };
+  const one = (s: number): [number, number, number] => [s, s, s];
+  const flat = (s: number): [number, number, number] => [s, s * 0.7, s];
 
-  group.add(trunks, leaves, bushes);
+  if (theme === 'grass') {
+    // 草原：阔叶树 + 灌木
+    scatter(
+      [
+        { geo: cyl(0.22, 0.32, 2.4, 6, 1.2), mat: std(0x6b4a2f), castShadow: true },
+        { geo: cyl(0, 1.8, 4.4, 7, 4.2), mat: white(), castShadow: true },
+      ],
+      Math.round(240 * density), 17, 500,
+      () => c.clone().setHSL(0.29 + rand() * 0.06, 0.5, 0.24 + rand() * 0.1),
+      () => one(0.8 + rand() * 0.9),
+      -0.1,
+    );
+    scatter(
+      [{ geo: new THREE.IcosahedronGeometry(0.9, 0), mat: white(), castShadow: true }],
+      Math.round(130 * density), 13, 60,
+      () => c.clone().setHSL(0.27 + rand() * 0.05, 0.45, 0.2 + rand() * 0.08),
+      () => flat(0.6 + rand() * 1.1),
+      0.1,
+    );
+    return group;
+  }
+
+  if (theme === 'desert') {
+    // 沙漠：仙人掌（柱+臂合并）/ 岩石 / 枯木
+    const cactusGeo = mergeGeometries([
+      cyl(0.22, 0.28, 1.8, 7, 0.9),
+      new THREE.CylinderGeometry(0.12, 0.14, 0.7, 6).rotateZ(Math.PI / 2).translate(0.35, 1.0, 0),
+      new THREE.CylinderGeometry(0.1, 0.12, 0.5, 6).translate(0.62, 1.3, 0),
+    ])!;
+    scatter(
+      [{ geo: cactusGeo, mat: std(0x3e7a3a), castShadow: true }],
+      Math.round(90 * density), 15, 350,
+      () => c.clone().setHSL(0.3 + rand() * 0.04, 0.45, 0.3 + rand() * 0.08),
+      () => one(0.7 + rand() * 1.0),
+    );
+    scatter(
+      [{ geo: new THREE.IcosahedronGeometry(0.9, 0), mat: white(), castShadow: true }],
+      Math.round(110 * density), 13, 200,
+      () => c.clone().setHSL(0.08 + rand() * 0.03, 0.3, 0.35 + rand() * 0.12),
+      () => flat(0.5 + rand() * 1.6),
+      0.05,
+    );
+    const deadGeo = mergeGeometries([
+      cyl(0.12, 0.2, 2.6, 5, 1.3),
+      new THREE.BoxGeometry(1.4, 0.12, 0.12).rotateZ(0.5).translate(0.5, 2.1, 0),
+      new THREE.BoxGeometry(1.1, 0.1, 0.1).rotateZ(-0.6).translate(-0.4, 1.7, 0.1),
+    ])!;
+    scatter(
+      [{ geo: deadGeo, mat: std(0x5a4632), castShadow: true }],
+      Math.round(45 * density), 18, 300,
+      () => c.clone().setHSL(0.07, 0.35, 0.25 + rand() * 0.08),
+      () => one(0.8 + rand() * 0.8),
+    );
+    return group;
+  }
+
+  if (theme === 'snow') {
+    // 雪地：雪顶针叶树 + 雪灌木
+    const pineGeo = mergeGeometries([
+      cyl(0, 1.7, 3.8, 7, 1.9),
+      new THREE.ConeGeometry(1.1, 1.7, 7).translate(0, 3.6, 0),
+    ])!;
+    scatter(
+      [
+        { geo: cyl(0.2, 0.28, 2.0, 6, 1.0), mat: std(0x4a3828), castShadow: true },
+        { geo: pineGeo, mat: white(), castShadow: true },
+      ],
+      Math.round(170 * density), 16, 300,
+      () => c.clone().setHSL(0.36 + rand() * 0.03, 0.45, 0.2 + rand() * 0.08),
+      () => one(0.8 + rand() * 0.9),
+      -0.1,
+    );
+    scatter(
+      [{ geo: new THREE.IcosahedronGeometry(0.8, 0), mat: white(), castShadow: true }],
+      Math.round(70 * density), 12, 50,
+      () => c.clone().setHSL(0.55, 0.1, 0.82 + rand() * 0.1),
+      () => flat(0.6 + rand() * 0.9),
+      0.1,
+    );
+    return group;
+  }
+
+  // city（工业区）：路灯杆（杆+发光头）/ 集装箱 / 筒仓
+  const poleGeo = cyl(0.08, 0.1, 4.5, 6, 2.25);
+  const headGeo = new THREE.BoxGeometry(0.5, 0.14, 0.26).translate(0, 4.55, 0);
+  scatter(
+    [
+      { geo: poleGeo, mat: std(0x2c2f36, 0.6), castShadow: true },
+      {
+        geo: headGeo,
+        mat: new THREE.MeshStandardMaterial({ color: 0x141410, emissive: 0xffd98a, emissiveIntensity: 2.4 }),
+        castShadow: false,
+      },
+    ],
+    Math.round(45 * density), 12, 18,
+    () => null,
+    () => one(1),
+  );
+  scatter(
+    [{ geo: new THREE.BoxGeometry(2.4, 1.2, 1.2).translate(0, 0.6, 0), mat: white(), castShadow: true }],
+    Math.round(55 * density), 16, 70,
+    () => {
+      const hues = [0.0, 0.6, 0.32, 0.08];
+      return c.clone().setHSL(hues[Math.floor(rand() * hues.length)], 0.55, 0.3 + rand() * 0.12);
+    },
+    () => one(0.9 + rand() * 0.5),
+  );
+  scatter(
+    [{ geo: cyl(1.2, 1.2, 3.5, 10, 1.75), mat: std(0x7a7f86, 0.7), castShadow: true }],
+    Math.round(22 * density), 20, 80,
+    () => c.clone().setHSL(0.55, 0.08, 0.4 + rand() * 0.15),
+    () => one(0.8 + rand() * 0.6),
+  );
   return group;
 }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEFAULT_THEME, THEMES, type ThemeId } from '../track/themes';
 
 export type TimeOfDay = 'day' | 'sunset' | 'night';
 export type WeatherKind = 'clear' | 'rain';
@@ -63,10 +64,18 @@ const lerpColor = (a: number, b: number, t: number): number => {
   return ca.lerp(cb, t).getHex();
 };
 
-/** 时间 × 天气组合出环境预设（纯函数，可测） */
-export function resolveEnv(c: Conditions): EnvPreset {
+/** 时间 × 天气 × 地形主题组合出环境预设（纯函数，可测；雨覆盖在主题之上） */
+export function resolveEnv(c: Conditions, theme: ThemeId = DEFAULT_THEME): EnvPreset {
   const base = TIME_PRESETS[c.time];
   const preset: EnvPreset = { ...base, roadRoughness: 0.95, rain: false };
+
+  // 主题雾色/天际线微调（先主题，后天气 —— 雨天覆盖优先）
+  const pal = THEMES[theme];
+  if (pal.fogMix > 0) {
+    preset.fogColor = lerpColor(preset.fogColor, pal.fogMixColor, pal.fogMix);
+    preset.skyHorizon = lerpColor(preset.skyHorizon, pal.fogMixColor, Math.min(0.5, pal.fogMix));
+  }
+
   if (c.weather === 'rain') {
     // 雨天覆盖：阴沉灰调、浓雾、光照压暗
     preset.fogColor = lerpColor(preset.fogColor, 0x6a7078, 0.45);
@@ -93,7 +102,7 @@ export interface EnvRefs {
   fog: THREE.Fog;
   skyMat: THREE.ShaderMaterial;
   renderer: THREE.WebGLRenderer;
-  roadMats: { mat: THREE.MeshStandardMaterial; baseRoughness: number }[];
+  roadMats: { mat: THREE.MeshStandardMaterial; baseRoughness: number; theme: ThemeId }[];
   glowMats: { mat: THREE.MeshStandardMaterial; base: number }[];
   headlightMats: THREE.MeshStandardMaterial[];
   headlightBlobMat: THREE.ShaderMaterial;
@@ -114,7 +123,10 @@ export function applyEnvironment(p: EnvPreset, r: EnvRefs): void {
   (r.skyMat.uniforms.horizon as { value: THREE.Color }).value.setHex(p.skyHorizon);
   (r.skyMat.uniforms.bottom as { value: THREE.Color }).value.setHex(p.skyBottom);
   r.renderer.toneMappingExposure = p.exposure;
-  for (const rm of r.roadMats) rm.mat.roughness = p.roadRoughness;
+  for (const rm of r.roadMats) {
+    rm.mat.roughness = p.roadRoughness;
+    rm.mat.color.setHex(THEMES[rm.theme].roadTint);
+  }
   for (const gm of r.glowMats) gm.mat.emissiveIntensity = gm.base * p.gantryBoost;
   for (const hm of r.headlightMats) hm.emissiveIntensity = 2.4 * p.headlightGlow;
   (r.headlightBlobMat.uniforms.uOpacity as { value: number }).value = p.headlightBlob;

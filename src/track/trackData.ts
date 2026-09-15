@@ -24,6 +24,8 @@ export interface TrackDef {
   hills: number;
   /** 植被密度倍率 */
   vegetation: number;
+  /** 地形主题（缺省 grass） */
+  theme?: import('./themes').ThemeId;
 }
 
 // 环道：经典 1.65km 环形
@@ -136,6 +138,39 @@ const RIDGE_POINTS: [number, number, number][] = [
   [-90, 8, -190],
 ];
 
+// 雪地环道：柔和起伏的中等环道（雪主题）
+const SNOWFIELD_POINTS: [number, number, number][] = [
+  [0, 0, -200],
+  [150, 2, -170],
+  [230, 5, -60],
+  [200, 8, 60],
+  [260, 10, 160],
+  [120, 12, 220],
+  [-40, 10, 200],
+  [-170, 8, 250],
+  [-260, 6, 140],
+  [-230, 4, 0],
+  [-280, 2, -120],
+  [-130, 1, -200],
+];
+
+// 工业区冲刺道：直道 + 硬弯（工业区主题）
+const INDUSTRY_POINTS: [number, number, number][] = [
+  [-600, 0, -500],
+  [-400, 1, -500],
+  [-200, 2, -480],
+  [-40, 3, -460],
+  [120, 4, -320],
+  [120, 5, -120],
+  [300, 6, 0],
+  [300, 5, 200],
+  [140, 4, 330],
+  [160, 4, 500],
+  [360, 3, 560],
+  [560, 2, 540],
+  [720, 1, 640],
+];
+
 export const TRACK_DEFS: Record<TrackId, TrackDef> = {
   circuit: {
     id: 'circuit',
@@ -206,6 +241,37 @@ export const TRACK_DEFS: Record<TrackId, TrackDef> = {
     startOffset: 17,
     hills: 1.0,
     vegetation: 0.7,
+    theme: 'desert',
+  },
+  snowfield: {
+    id: 'snowfield',
+    name: '雪地环道',
+    closed: true,
+    points: SNOWFIELD_POINTS,
+    halfWidth: 6.5,
+    runoffWidth: 4.0,
+    samples: 1000,
+    checkpoints: 12,
+    laps: 3,
+    startOffset: 0,
+    hills: 1.0,
+    vegetation: 1.2,
+    theme: 'snow',
+  },
+  industry: {
+    id: 'industry',
+    name: '工业区冲刺道',
+    closed: false,
+    points: INDUSTRY_POINTS,
+    halfWidth: 6.5,
+    runoffWidth: 4.0,
+    samples: 1300,
+    checkpoints: 10,
+    laps: 1,
+    startOffset: 17,
+    hills: 0.5,
+    vegetation: 1.0,
+    theme: 'city',
   },
 };
 

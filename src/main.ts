@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Track } from './track/track';
 import { TRACK_COMPAT, TRACK_DEFS, type TrackDef, type TrackId } from './track/trackData';
 import { toTrackDef } from './track/customTrack';
+import { THEMES, themeOf } from './track/themes';
 import { buildCurbs, buildGantry, buildGuardrails, buildRoad } from './track/trackMesh';
 import { createSky, createTerrain, createVegetation } from './track/environment';
 import { Car } from './car/car';
@@ -142,7 +143,7 @@ function buildTrackBundle(def: TrackDef): TrackBundle {
   group.add(buildGuardrails(track));
   group.add(buildGantry(track, 0, "RETRO RUSH '95", false));
   if (!def.closed) group.add(buildGantry(track, 1, 'FINISH', true));
-  group.add(createVegetation(terrain, def.vegetation));
+  group.add(createVegetation(track, terrain));
   scene.add(group);
 
   // 环境可调材质登记（发光体：拱门霓虹/横幅，emissiveIntensity > 1.4）
@@ -179,7 +180,7 @@ function getBundle(id: TrackId): TrackBundle {
     if (!def) throw new Error(`unknown track: ${id}`);
     b = buildTrackBundle(def);
     bundles.set(id, b);
-    envRefs.roadMats.push({ mat: b.roadMat, baseRoughness: 0.95 });
+    envRefs.roadMats.push({ mat: b.roadMat, baseRoughness: 0.95, theme: themeOf(def.theme) });
     envRefs.glowMats.push(...b.glowMats);
     applyConditions(); // 新 bundle 同步当前环境参数
   }
@@ -298,9 +299,9 @@ const envRefs: EnvRefs = {
   headlightBlobMat,
 };
 
-/** 应用当前存档的时间 × 天气（光照/雾/雨粒子/湿滑） */
+/** 应用当前存档的时间 × 天气 × 当前赛道主题（光照/雾/雨粒子/湿滑） */
 function applyConditions(): void {
-  const preset = resolveEnv(save.lastConditions);
+  const preset = resolveEnv(save.lastConditions, themeOf(bundle.track.def.theme));
   envRefs.headlightMats = [...allCars, ...pursuit.cars].map((c) => c.headMaterial);
   applyEnvironment(preset, envRefs);
   rainFX.setEnabled(preset.rain);
@@ -759,7 +760,7 @@ function setupTrackItems(m: GameMode): { id: string; label: string }[] {
     const rec = save.records[def.id];
     items.push({
       id: def.id,
-      label: `${def.name}${custom ? ' [自定义]' : ''} · ${len}km${rec !== undefined ? ` · 最佳 ${formatRaceTime(rec)}` : ''}`,
+      label: `${def.name}${custom ? ' [自定义]' : ''} · ${THEMES[themeOf(def.theme)].name} · ${len}km${rec !== undefined ? ` · 最佳 ${formatRaceTime(rec)}` : ''}`,
     });
   };
   for (const def of Object.values(TRACK_DEFS)) push(def, false);

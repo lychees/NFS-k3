@@ -1,5 +1,7 @@
 /** 车库存档：积分 / 性能改装等级 / 外观配置，localStorage 持久化 */
 
+import { themeOf } from '../track/themes';
+
 export type RimStyle = 'sport' | 'mesh' | 'dish';
 export type SpoilerStyle = 'none' | 'low' | 'gt';
 
@@ -371,6 +373,7 @@ function migrateCustomTracks(v: unknown): SaveData['customTracks'] {
         custom: true,
         startIndex: typeof t.startIndex === 'number' && Number.isFinite(t.startIndex) ? Math.floor(t.startIndex) : 0,
         direction: t.direction === -1 ? -1 : 1,
+        theme: themeOf(t.theme),
       });
     }
   }
