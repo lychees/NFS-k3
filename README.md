@@ -78,6 +78,7 @@
 - Vite 5 + TypeScript（strict）+ Three.js（含 addons 的 UnrealBloomPass 泛光后处理与 GLTFLoader）
 - 车辆模型：Kenney Car Kit（CC0，https://kenney.nl/assets/car-kit）GLB 车模 + 程序化兜底车模；GLB 经统一归一化（缩放至 4.4m 车长、居中贴地、车头 +Z）接入既有车漆/涂装/损伤/灯光系统
 - 无物理引擎：`src/car/carPhysics.ts` 自实现街机车辆模型（纵/侧向速度分解 + 抓地力指数衰减），物理参数按改装配置实例化（`makeTuning`）
+- 手感模型：目标横摆按**横向 G 上限**钳制（12 m/s² 基础、轮胎每级 +1.2，雨天/草地同步缩放——低速小半径灵活、高速自然变稳），横摆经 0.1s 一阶低通消除开关感；转角随 √速度 收窄（0.45→0.14 rad）、方向盘打入 6.0 rad/s 回正 ×1.2；手刹漂移中**反打方向获得 1.8× 抓地恢复**（漂移可救车）
 - 无外部素材：车辆由挤压轮廓 + BoxGeometry 拼装，涂装/贴图/粒子纹理全部 Canvas 或 shader 程序生成
 - 无音频素材：`src/audio/` 全部用 Web Audio API 程序合成（转速/档位/包络为纯函数 `engineModel.ts`）
 - 赛道由 Catmull-Rom 样条定义（闭合环道 + 开放点对点共用一套采样/生成代码，数据驱动见 `src/track/trackData.ts`），路面 / 路缘石 / 护栏 / 地形全部程序化生成

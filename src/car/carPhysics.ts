@@ -17,6 +17,8 @@ export interface TuningParams {
   maxSpeed: number;
   engineAccel: number;
   steerSpeed: number;
+  /** 横向加速度上限 m/s²（手感核心：高速不陀螺，轮胎每级 +1.2） */
+  latG: number;
   lateralGrip: number;
   handbrakeGrip: number;
   nitroPower: number;
@@ -32,8 +34,9 @@ export function makeTuning(u: UpgradeLevels): TuningParams {
   return {
     maxSpeed: 61 + 2.2 * u.engine, // 61 -> 72 m/s
     engineAccel: 16 + 1.6 * u.engine, // 16 -> 24 m/s²
-    steerSpeed: 4.2 + 0.3 * u.tires, // 方向盘速率
-    lateralGrip: 7.5 + 0.9 * u.tires, // 7.5 -> 12
+    steerSpeed: 6.0 + 0.3 * u.tires, // 方向盘速率（跟手优先）
+    latG: 18 + 1.2 * u.tires, // 横向加速度上限 18 -> 24 m/s²（手感主旋钮：高速横摆上限 = latG/v）
+    lateralGrip: 6.5 + 0.9 * u.tires, // 6.5 -> 11（保留一点滑移感）
     handbrakeGrip: 1.3 + 0.25 * u.tires, // 漂移后恢复更快
     nitroPower: 9 + 3 * u.nitro, // 9 -> 24 m/s² 额外推力
     nitroCapacity: 30 + 14 * u.nitro, // 30 -> 100 单位
@@ -46,8 +49,11 @@ export const PHYS = {
   reverseAccel: 8,
   coastDrag: 0.3, // 松油门自然减速
   wheelBase: 2.7,
-  steerMaxLow: 0.6, // 低速最大转角（rad）
-  steerMaxHigh: 0.11, // 高速最大转角
+  steerMaxLow: 0.45, // 低速最大转角（rad）——缩小，配合横向G钳制
+  steerMaxHigh: 0.14, // 高速最大转角——上限由横向G决定而非转角
+  steerReturnMult: 1.2, // 回正比打入快 20%
+  yawSmoothing: 0.1, // 横摆一阶低通时间常数（秒），消除开关感
+  countersteerBoost: 1.8, // 漂移反打救车的抓地加成
   driftYawBoost: 1.7, // 手刹时额外横摆
   grassGripScale: 0.55,
   grassDrag: 1.6, // 草地额外阻力
@@ -96,6 +102,8 @@ export interface PhysicsState {
   /** 朝向角，forward = (sin h, 0, cos h)；右转 = h 减小 */
   heading: number;
   steer: number; // 当前实际转角（rad，带惯性）
+  /** 当前横摆角速度（一阶低通状态） */
+  yawRate: number;
   forwardSpeed: number; // 输出：纵向速度
   longAccel: number; // 输出：纵向加速度（车身俯仰用）
   latAccel: number; // 输出：向心加速度（车身侧倾用）
@@ -152,25 +160,37 @@ export function stepPhysics(
   }
 
   // 侧向抓地（手刹时保留侧滑 = 漂移）
-  const grip = (input.handbrake ? tuning.handbrakeGrip : tuning.lateralGrip) * surface.gripScale;
+  let grip = (input.handbrake ? tuning.handbrakeGrip : tuning.lateralGrip) * surface.gripScale;
+  // 漂移反打救车：转向与侧滑方向相反时抓地恢复加成
+  if (input.handbrake && Math.abs(vR) > 1 && Math.sign(input.steer) === -Math.sign(vR)) {
+    grip *= PHYS.countersteerBoost;
+  }
   vR *= Math.exp(-grip * dt);
 
-  // 转向：转角随速度收窄，带方向盘惯性
-  const speedK = clamp(Math.abs(vF) / tuning.maxSpeed, 0, 1);
+  // 转向：转角随速度收窄（sqrt 曲线，中速过渡更自然）；打入/回正不同速率
+  const speedK = Math.sqrt(clamp(Math.abs(vF) / tuning.maxSpeed, 0, 1));
   const steerMax = lerp(PHYS.steerMaxLow, PHYS.steerMaxHigh, speedK);
   const steerTarget = input.steer * steerMax;
-  const steerDelta = clamp(steerTarget - s.steer, -tuning.steerSpeed * dt, tuning.steerSpeed * dt);
+  const returning = Math.abs(steerTarget) < Math.abs(s.steer);
+  const steerRate = tuning.steerSpeed * (returning ? PHYS.steerReturnMult : 1);
+  const steerDelta = clamp(steerTarget - s.steer, -steerRate * dt, steerRate * dt);
   s.steer += steerDelta;
 
-  // 横摆（右转 = heading 减小）；倒车自然反向
-  let yawRate = 0;
+  // 目标横摆（右转 = heading 减小；倒车自然反向）：
+  // 按横向 G 上限钳制 —— 低速小半径灵活、高速自然变稳不陀螺
+  let yawTarget = 0;
   if (Math.abs(vF) > 0.1) {
-    yawRate = -(vF / PHYS.wheelBase) * Math.tan(s.steer);
-    if (input.handbrake && vF > 5) yawRate *= PHYS.driftYawBoost;
+    yawTarget = -(vF / PHYS.wheelBase) * Math.tan(s.steer);
+    if (input.handbrake && vF > 5) yawTarget *= PHYS.driftYawBoost;
+    const cap = (tuning.latG * surface.gripScale) / Math.max(Math.abs(vF), 2);
+    yawTarget = clamp(yawTarget, -cap, cap);
   }
-  s.heading += yawRate * dt;
+  // 横摆一阶低通逼近目标，消除骤起骤停的开关感
+  const yawK = 1 - Math.exp(-dt / PHYS.yawSmoothing);
+  s.yawRate += (yawTarget - s.yawRate) * yawK;
+  s.heading += s.yawRate * dt;
 
-  s.latAccel = -yawRate * vF; // 右转（yawRate<0）为正
+  s.latAccel = -s.yawRate * vF; // 右转（yawRate<0）为正
   const prevVF = s.forwardSpeed;
   s.longAccel = dt > 0 ? (vF - prevVF) / dt : 0;
   s.forwardSpeed = vF;

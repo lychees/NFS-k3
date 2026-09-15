@@ -52,7 +52,7 @@ export class Car {
   private tier: DamageTier = 0;
 
   state: PhysicsState = {
-    x: 0, z: 0, vx: 0, vz: 0, heading: 0, steer: 0,
+    x: 0, z: 0, vx: 0, vz: 0, heading: 0, steer: 0, yawRate: 0,
     forwardSpeed: 0, longAccel: 0, latAccel: 0, latSpeed: 0,
     nitroFuel: 0, nitroActive: false,
   };
@@ -245,6 +245,7 @@ export class Car {
     this.effTuning.maxSpeed = this.tuning.maxSpeed * damageTopSpeedMult(d);
     this.effTuning.engineAccel = this.tuning.engineAccel * damageAccelMult(d);
     this.effTuning.steerSpeed = this.tuning.steerSpeed * damageSteerMult(d);
+    this.effTuning.latG = this.tuning.latG;
     this.effTuning.lateralGrip = this.tuning.lateralGrip;
     this.effTuning.handbrakeGrip = this.tuning.handbrakeGrip;
     this.effTuning.nitroPower = this.tuning.nitroPower;
@@ -265,6 +266,7 @@ export class Car {
     this.state.vz = 0;
     this.state.heading = headingFromTangent(s.tangent);
     this.state.steer = 0;
+    this.state.yawRate = 0;
     this.state.forwardSpeed = 0;
     this.state.nitroFuel = this.tuning.nitroCapacity;
     this.state.nitroActive = false;
