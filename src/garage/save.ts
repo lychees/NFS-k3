@@ -369,6 +369,8 @@ function migrateCustomTracks(v: unknown): SaveData['customTracks'] {
         hills: t.hills,
         vegetation: t.vegetation,
         custom: true,
+        startIndex: typeof t.startIndex === 'number' && Number.isFinite(t.startIndex) ? Math.floor(t.startIndex) : 0,
+        direction: t.direction === -1 ? -1 : 1,
       });
     }
   }
