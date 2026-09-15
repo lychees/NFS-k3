@@ -82,6 +82,8 @@ export interface SaveData {
   };
   /** 车辆损伤开关（默认 ON） */
   damageEnabled: boolean;
+  /** 道具赛开关（默认 ON） */
+  itemsEnabled: boolean;
 }
 
 export const UPGRADE_MAX = 5;
@@ -163,6 +165,7 @@ export function defaultSave(): SaveData {
     liveryDesigns: [],
     lastConditions: { time: 'day', weather: 'clear' },
     damageEnabled: true,
+    itemsEnabled: true,
   };
 }
 
@@ -223,6 +226,7 @@ export function loadSave(): SaveData {
         weather: data.lastConditions?.weather === 'rain' ? 'rain' : 'clear',
       },
       damageEnabled: typeof data.damageEnabled === 'boolean' ? data.damageEnabled : true,
+      itemsEnabled: typeof data.itemsEnabled === 'boolean' ? data.itemsEnabled : true,
     };
   } catch {
     return base;

@@ -1114,3 +1114,29 @@ body {
   font-size: 12px;
   color: #cfd6e4;
 }
+
+/* ---------- 道具栏 ---------- */
+
+.hud-item {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 6px;
+  background: rgba(6, 20, 28, 0.72);
+  border: 2px solid #18e0ff;
+  border-radius: 6px;
+  box-shadow: 0 0 12px rgba(24, 224, 255, 0.4);
+}
+
+.hud-item .item-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.hud-item .item-name {
+  font-size: 14px;
+  color: #18e0ff;
+  font-style: italic;
+  letter-spacing: 1px;
+}

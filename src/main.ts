@@ -36,6 +36,8 @@ import { GarageScreen } from './garage/garageScreen';
 import { GaragePreview } from './garage/garagePreview';
 import { PaintShopScreen } from './ui/paintShopScreen';
 import { TrackEditor } from './ui/trackEditor';
+import { ItemManager } from './items/itemSystem';
+import { ITEM_DEFS, type ItemId } from './items/itemDefs';
 import { SmokePool } from './fx/smoke';
 import { SpeedLines } from './fx/speedLines';
 import { PostFX } from './fx/postfx';
@@ -282,6 +284,18 @@ const chaseCam = new ChaseCamera();
 const chaseCamP2 = new ChaseCamera();
 const pursuit = new PursuitManager(scene);
 const heatOverlay = document.getElementById('heat-overlay')!;
+
+// ---------- 道具赛 ----------
+
+const items = new ItemManager(scene, smoke);
+
+const statOf = (car: Car) => race.stats.find((s) => s.car === car);
+const itemIconOf = (id: ItemId | null): { icon: string; name: string } | null =>
+  id ? { icon: ITEM_DEFS[id].icon, name: ITEM_DEFS[id].name } : null;
+
+function hudOf(human: 0 | 1): Hud {
+  return human === 1 ? hudP2 : splitMode ? hudP1 : hud;
+}
 
 // ---------- 天气 / 昼夜 ----------
 
@@ -653,6 +667,18 @@ function startRace(nextMode: GameMode, twoPlayer: boolean): void {
   pursuit.setVisible(mode === 'hotpursuit');
   if (mode === 'hotpursuit') pursuit.reset(bundle.track);
 
+  // 道具赛：沿赛道布箱（警车不在阵容内，天然免疫）
+  if (save.itemsEnabled) {
+    items.setup(
+      bundle.track,
+      field.map((f) => ({ car: f.car, isHuman: f.human })),
+      (car) => statOf(car)?.position ?? 1,
+      (car) => statOf(car)?.progress ?? 0,
+    );
+  } else {
+    items.teardown();
+  }
+
   // 只显示上场车辆
   const onField = new Set(field.map((f) => f.car));
   for (const c of allCars) c.group.visible = onField.has(c);
@@ -776,7 +802,7 @@ function openSetup(m: GameMode, twoPlayer: boolean): void {
   setupMode = m;
   setup2P = twoPlayer;
   const selected = trackIdOf(m);
-  screens.showSetup(SETUP_NAMES[m], save.lastConditions, save.damageEnabled, setupTrackItems(m), selected, {
+  screens.showSetup(SETUP_NAMES[m], save.lastConditions, save.damageEnabled, setupTrackItems(m), selected, save.itemsEnabled, {
     onTrack: (id) => {
       save.lastTracks[m] = id;
       persistSave(save);
@@ -787,19 +813,25 @@ function openSetup(m: GameMode, twoPlayer: boolean): void {
     onTime: (t) => {
       save.lastConditions.time = t;
       persistSave(save);
-      screens.refreshSetup(save.lastConditions, save.damageEnabled);
+      screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
       audio.playSfx('uiSelect');
     },
     onWeather: (w) => {
       save.lastConditions.weather = w;
       persistSave(save);
-      screens.refreshSetup(save.lastConditions, save.damageEnabled);
+      screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
       audio.playSfx('uiSelect');
     },
     onDamage: (enabled) => {
       save.damageEnabled = enabled;
       persistSave(save);
-      screens.refreshSetup(save.lastConditions, save.damageEnabled);
+      screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
+      audio.playSfx('uiSelect');
+    },
+    onItems: (enabled) => {
+      save.itemsEnabled = enabled;
+      persistSave(save);
+      screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
       audio.playSfx('uiSelect');
     },
     onStart: () => startFromSetup(),
@@ -949,7 +981,7 @@ input.onPress('Digit1', () => {
   if (screens.inSetup) {
     save.lastConditions.time = 'day';
     persistSave(save);
-    screens.refreshSetup(save.lastConditions, save.damageEnabled);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
     audio.playSfx('uiSelect');
     return;
   }
@@ -966,7 +998,7 @@ input.onPress('Digit2', () => {
   if (screens.inSetup) {
     save.lastConditions.time = 'sunset';
     persistSave(save);
-    screens.refreshSetup(save.lastConditions, save.damageEnabled);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
     audio.playSfx('uiSelect');
     return;
   }
@@ -983,7 +1015,7 @@ input.onPress('Digit3', () => {
   if (screens.inSetup) {
     save.lastConditions.time = 'night';
     persistSave(save);
-    screens.refreshSetup(save.lastConditions, save.damageEnabled);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
     audio.playSfx('uiSelect');
     return;
   }
@@ -993,7 +1025,7 @@ input.onPress('Digit4', () => {
   if (screens.inSetup) {
     save.lastConditions.weather = 'clear';
     persistSave(save);
-    screens.refreshSetup(save.lastConditions, save.damageEnabled);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
     audio.playSfx('uiSelect');
     return;
   }
@@ -1003,7 +1035,7 @@ input.onPress('Digit5', () => {
   if (screens.inSetup) {
     save.lastConditions.weather = 'rain';
     persistSave(save);
-    screens.refreshSetup(save.lastConditions, save.damageEnabled);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
     audio.playSfx('uiSelect');
     return;
   }
@@ -1013,9 +1045,25 @@ input.onPress('Digit6', () => {
   if (screens.inSetup) {
     save.damageEnabled = !save.damageEnabled;
     persistSave(save);
-    screens.refreshSetup(save.lastConditions, save.damageEnabled);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
     audio.playSfx('uiSelect');
   }
+});
+input.onPress('Digit7', () => {
+  if (screens.inSetup) {
+    save.itemsEnabled = !save.itemsEnabled;
+    persistSave(save);
+    screens.refreshSetup(save.lastConditions, save.damageEnabled, undefined, save.itemsEnabled);
+    audio.playSfx('uiSelect');
+  }
+});
+
+input.onPress('KeyE', () => {
+  if (race.state === 'racing' && items.enabled && items.useItem(player)) audio.playSfx('uiConfirm');
+});
+
+input.onPress('KeyQ', () => {
+  if (race.state === 'racing' && splitMode && items.enabled && items.useItem(player2)) audio.playSfx('uiConfirm');
 });
 
 window.addEventListener('blur', () => {
@@ -1190,6 +1238,7 @@ function hudDataFor(idx: number, state: typeof race.state): HudData {
     nitroRatio: car.nitroRatio,
     damageRatio: save.damageEnabled ? car.damage / 100 : 0,
     damageTier: save.damageEnabled ? car.damageTier : 0,
+    item: items.enabled ? itemIconOf(items.itemOf(car)) : null,
   };
 }
 
@@ -1306,6 +1355,9 @@ function animate(): void {
         );
       }
     });
+    // 道具效果（输入赋值后、物理推进前）
+    if (items.enabled) items.prePhysics(dt);
+
     field.forEach((f, idx) => {
       if (race.stats[idx]?.parked) return;
       f.car.update(dt, track);
@@ -1314,6 +1366,25 @@ function animate(): void {
       mode === 'hotpursuit' ? [...field.map((f) => f.car), ...pursuit.cars] : field.map((f) => f.car),
     );
     updateSmoke(dt);
+
+    // 道具实体（拾取/命中/AI 使用）
+    if (items.enabled && state === 'racing') {
+      items.postPhysics(dt, (kind, car) => {
+        const human = field.find((f) => f.car === car && f.human !== null);
+        if (!human) return;
+        const h = hudOf(human.human as 0 | 1);
+        if (kind === 'pickup') audio.playSfx('pickup');
+        else if (kind === 'hit') {
+          audio.playSfx('itemHit');
+          h.showBanner('⚠ 被击中!');
+          bannerTimer = 1.2;
+        } else {
+          audio.playSfx('uiConfirm');
+          h.showBanner('🛡 格挡!');
+          bannerTimer = 1.2;
+        }
+      });
+    }
 
     // 警察追逐：警车追捕 / 逮捕判定；被逮捕立即结束
     if (mode === 'hotpursuit') {
@@ -1424,7 +1495,11 @@ function animate(): void {
   // 事件横幅到时隐藏
   if (bannerTimer > 0) {
     bannerTimer -= dt;
-    if (bannerTimer <= 0) hud.hideBanner();
+    if (bannerTimer <= 0) {
+      hud.hideBanner();
+      hudP1.hideBanner();
+      hudP2.hideBanner();
+    }
   }
 
   // 双人宽限提示

@@ -47,6 +47,9 @@ export class Car {
   /** 损伤开关（比赛设置 DAMAGE: ON/OFF） */
   damageEnabled = true;
 
+  /** 抓地力临时乘数（道具油渍等效果用，1 = 正常） */
+  surfaceGripMult = 1;
+
   /** 损伤修正后的实际调校（预分配，每帧写入，不动物理核心） */
   private effTuning: TuningParams;
   private tier: DamageTier = 0;
@@ -283,13 +286,17 @@ export class Car {
   update(dt: number, track: Track): void {
     const st = this.state;
 
-    const surface = this.onRoad
+    let surface = this.onRoad
       ? this.wet
         ? WET_ROAD_SURFACE
         : ROAD_SURFACE
       : this.wet
         ? WET_GRASS_SURFACE
         : GRASS_SURFACE;
+    // 道具油渍等临时抓地修正（唯一效果挂钩点，不动物理核心）
+    if (this.surfaceGripMult !== 1) {
+      surface = { ...surface, gripScale: surface.gripScale * this.surfaceGripMult };
+    }
     this.refreshEffTuning();
     stepPhysics(st, this.input, dt, surface, this.effTuning, this.speedMultiplier);
 

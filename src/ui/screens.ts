@@ -131,11 +131,13 @@ export class Screens {
     damageEnabled: boolean,
     tracks: { id: string; label: string }[],
     selectedTrackId: string,
+    itemsEnabled: boolean,
     cbs: {
       onTrack: (id: string) => void;
       onTime: (t: 'day' | 'sunset' | 'night') => void;
       onWeather: (w: 'clear' | 'rain') => void;
       onDamage: (enabled: boolean) => void;
+      onItems: (enabled: boolean) => void;
       onStart: () => void;
     },
   ): void {
@@ -183,9 +185,18 @@ export class Screens {
         b.addEventListener('click', () => cbs.onDamage(id === 'on'));
         damage.appendChild(b);
       }
+      const items = el('setup-items');
+      for (const [id, name] of [['on', '开 ON'], ['off', '关 OFF']] as const) {
+        const b = document.createElement('button');
+        b.className = 'option';
+        b.dataset.items = id;
+        b.textContent = name;
+        b.addEventListener('click', () => cbs.onItems(id === 'on'));
+        items.appendChild(b);
+      }
       el('setup-start').addEventListener('click', cbs.onStart);
     }
-    this.refreshSetup(conditions, damageEnabled);
+    this.refreshSetup(conditions, damageEnabled, undefined, itemsEnabled);
     el('screen-setup').classList.remove('hidden');
   }
 
@@ -193,6 +204,7 @@ export class Screens {
     conditions: { time: string; weather: string },
     damageEnabled: boolean,
     selectedTrackId?: string,
+    itemsEnabled?: boolean,
   ): void {
     if (selectedTrackId !== undefined) {
       el('setup-tracks')
@@ -210,6 +222,13 @@ export class Screens {
       .forEach((b) =>
         b.classList.toggle('selected', (b.dataset.damage === 'on') === damageEnabled),
       );
+    if (itemsEnabled !== undefined) {
+      el('setup-items')
+        .querySelectorAll<HTMLElement>('[data-items]')
+        .forEach((b) =>
+          b.classList.toggle('selected', (b.dataset.items === 'on') === itemsEnabled),
+        );
+    }
   }
 
   hideSetup(): void {

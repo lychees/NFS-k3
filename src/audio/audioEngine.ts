@@ -10,7 +10,9 @@ export type SfxName =
   | 'nitro'
   | 'thud'
   | 'shift'
-  | 'eliminate';
+  | 'eliminate'
+  | 'pickup'
+  | 'itemHit';
 
 interface NoiseVoice {
   filter: BiquadFilterNode;
@@ -144,6 +146,27 @@ class AudioEngine {
       case 'uiSelect':
         this.blip(1250, 0.06, 'square', 0.1);
         break;
+      case 'pickup':
+        this.blip(880, 0.05, 'square', 0.12);
+        this.blip(1174, 0.05, 'square', 0.12, 0.05);
+        this.blip(1568, 0.08, 'square', 0.14, 0.1);
+        break;
+      case 'itemHit': {
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(320, t);
+        osc.frequency.exponentialRampToValueAtTime(70, t + 0.3);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.4, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+        osc.connect(g).connect(this.master);
+        osc.start(t);
+        osc.stop(t + 0.45);
+        osc.onended = () => g.disconnect();
+        this.noiseShot(0.18, 0.3, null, 'bandpass', 1400);
+        break;
+      }
       case 'uiConfirm':
         this.blip(900, 0.06, 'square', 0.12);
         this.blip(1400, 0.09, 'square', 0.12, 0.07);

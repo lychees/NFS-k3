@@ -5,6 +5,7 @@ const TEMPLATE = `
     <div class="hud-position">4<span class="pos-total">/4</span></div>
     <div class="hud-lap">LAP 1/3</div>
     <div class="hud-grace hidden"></div>
+    <div class="hud-item hidden"><span class="item-icon"></span><span class="item-name"></span></div>
   </div>
   <div class="hud-bottom-left">
     <div class="time-row"><span class="time-label label-current">本圈</span><span class="time-current">0:00.00</span></div>
@@ -57,6 +58,8 @@ export interface HudData {
   /** 损伤 0..1 与视觉档位 0-3 */
   damageRatio: number;
   damageTier: number;
+  /** 道具栏（无道具为 null） */
+  item: { icon: string; name: string } | null;
 }
 
 /** DOM 覆盖层 HUD（可实例化多份：单人全屏 / 双人上下半屏各一份） */
@@ -76,6 +79,9 @@ export class Hud {
   private banner: HTMLElement;
   private message: HTMLElement;
   private nitroFill: HTMLElement;
+  private itemSlot: HTMLElement;
+  private itemIcon: HTMLElement;
+  private itemName: HTMLElement;
   private damageFill: HTMLElement;
   private damageCritical: HTMLElement;
 
@@ -109,6 +115,9 @@ export class Hud {
     this.banner = q('hud-banner');
     this.message = q('hud-message');
     this.nitroFill = q('nitro-fill');
+    this.itemSlot = q('hud-item');
+    this.itemIcon = q('item-icon');
+    this.itemName = q('item-name');
     this.damageFill = q('damage-fill');
     this.damageCritical = q('damage-critical');
   }
@@ -196,6 +205,14 @@ export class Hud {
     }
 
     this.message.classList.toggle('hidden', !d.wrongWay);
+
+    if (d.item) {
+      this.itemSlot.classList.remove('hidden');
+      this.itemIcon.textContent = d.item.icon;
+      this.itemName.textContent = d.item.name;
+    } else {
+      this.itemSlot.classList.add('hidden');
+    }
 
     const nitroPct = Math.round(d.nitroRatio * 100);
     if (nitroPct !== this.lastNitro) {
