@@ -182,7 +182,7 @@ function getBundle(id: TrackId): TrackBundle {
     bundles.set(id, b);
     envRefs.roadMats.push({ mat: b.roadMat, baseRoughness: 0.95, theme: themeOf(def.theme) });
     envRefs.glowMats.push(...b.glowMats);
-    applyConditions(); // 新 bundle 同步当前环境参数
+    applyConditions(themeOf(def.theme)); // 新 bundle 同步当前环境参数（显式传主题，此时 bundle 变量尚未初始化）
   }
   return b;
 }
@@ -299,17 +299,16 @@ const envRefs: EnvRefs = {
   headlightBlobMat,
 };
 
-/** 应用当前存档的时间 × 天气 × 当前赛道主题（光照/雾/雨粒子/湿滑） */
-function applyConditions(): void {
-  const preset = resolveEnv(save.lastConditions, themeOf(bundle.track.def.theme));
+/** 应用当前存档的时间 × 天气 × 当前赛道主题（光照/雾/雨粒子/湿滑）。
+ *  主题可显式传入——bundle 初始化期间（getBundle 内部）无法引用 bundle 变量 */
+function applyConditions(theme?: string): void {
+  const preset = resolveEnv(save.lastConditions, theme ?? themeOf(bundle.track.def.theme));
   envRefs.headlightMats = [...allCars, ...pursuit.cars].map((c) => c.headMaterial);
   applyEnvironment(preset, envRefs);
   rainFX.setEnabled(preset.rain);
   audio.setRain(rainVolume(preset.rain));
   for (const c of [...allCars, ...pursuit.cars]) c.wet = preset.rain;
 }
-
-applyConditions();
 
 // ---------- 回放 ----------
 
