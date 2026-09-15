@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Track } from './track/track';
 import { TRACK_COMPAT, TRACK_DEFS, type TrackDef, type TrackId } from './track/trackData';
 import { toTrackDef } from './track/customTrack';
-import { THEMES, themeOf } from './track/themes';
+import { THEMES, themeOf, type ThemeId } from './track/themes';
 import { buildCurbs, buildGantry, buildGuardrails, buildRoad } from './track/trackMesh';
 import { createSky, createTerrain, createVegetation } from './track/environment';
 import { Car } from './car/car';
@@ -301,7 +301,7 @@ const envRefs: EnvRefs = {
 
 /** 应用当前存档的时间 × 天气 × 当前赛道主题（光照/雾/雨粒子/湿滑）。
  *  主题可显式传入——bundle 初始化期间（getBundle 内部）无法引用 bundle 变量 */
-function applyConditions(theme?: string): void {
+function applyConditions(theme?: ThemeId): void {
   const preset = resolveEnv(save.lastConditions, theme ?? themeOf(bundle.track.def.theme));
   envRefs.headlightMats = [...allCars, ...pursuit.cars].map((c) => c.headMaterial);
   applyEnvironment(preset, envRefs);
